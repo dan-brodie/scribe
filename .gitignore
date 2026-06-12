@@ -1,0 +1,49 @@
+# Xcode
+*.xcuserstate
+xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.moved-aside
+*.hmap
+*.ipa
+*.xcarchive
+
+# Swift / SPM
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Audio — never commit raw recordings
+*.caf
+*.wav
+*.mp3
+*.m4a
+*.aiff
+
+# Model weights — use make download-models instead
+*.mlmodelc
+*.gguf
+*.safetensors
+Models/
+
+# Credentials
+.env
+*.pem
+*.p12
+*.mobileprovision
+
+# Editors
+.vscode/
+*.swp
+*~

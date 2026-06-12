@@ -1,0 +1,39 @@
+disabled_rules:
+  - todo
+  - file_length
+
+opt_in_rules:
+  - explicit_init
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - closure_end_indentation
+  - operator_usage_whitespace
+  - overridden_super_call
+  - prohibited_super_call
+  - redundant_nil_coalescing
+  - unused_import
+
+analyzer_rules:
+  - unused_declaration
+
+force_cast: error
+force_try: error
+
+line_length:
+  warning: 140
+  error: 200
+  ignores_function_declarations: true
+  ignores_comments: true
+
+identifier_name:
+  min_length: 2
+
+type_name:
+  min_length: 3
+
+excluded:
+  - Tests/Fixtures
+  - Scripts
+  - docs
+  - specs
+  - Prompts

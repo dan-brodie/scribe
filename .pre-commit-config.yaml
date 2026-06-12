@@ -1,0 +1,41 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(docs|specs)/
+      - id: end-of-file-fixer
+        exclude: ^(docs|specs)/
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+
+  - repo: local
+    hooks:
+      - id: no-audio-files
+        name: Block audio file commits
+        language: fail
+        files: \.(caf|wav|mp3|m4a|aiff)$
+        entry: "Audio files must not be committed — store recordings in ~/Library/Application Support/Scribe/"
+
+      - id: no-model-weights
+        name: Block model weight commits
+        language: fail
+        files: \.(mlmodelc|gguf|safetensors|bin)$
+        entry: "Model weights must not be committed — use make download-models"
+
+      - id: swift-license-header
+        name: Require SPDX license header in Swift files
+        language: pygrep
+        types: [swift]
+        args: ["--negate"]
+        entry: "SPDX-License-Identifier: MIT"
+
+      - id: no-debug-print
+        name: No bare print() statements in production Swift
+        language: pygrep
+        types: [swift]
+        entry: "^\\s*print\\("
+        exclude: ^Tests/
+        args: ["--multiline"]
