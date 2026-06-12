@@ -59,10 +59,16 @@ final class AppCoordinator {
     /// Whether meetings should auto-record at their start time.
     var autoRecordEnabled = true
 
+    /// Model-download progress (0...1) while fetching ASR weights, else nil.
+    private(set) var modelDownloadProgress: Double?
+    /// Short message describing current processing ("Transcribing…"), else nil.
+    private(set) var processingMessage: String?
+
     let database: Database
     let stateMachine: StateMachine
     let calendarService: CalendarService
     let captureService: CaptureService
+    let asrEngine = ASREngine()
 
     private let timing = CaptureTiming.default
     private let logger = Log.make("AppCoordinator")
@@ -280,12 +286,56 @@ final class AppCoordinator {
         if let meetingID = target.meetingID {
             do {
                 try await stateMachine.transition(meeting: meetingID, to: .recorded)
+                await processMeeting(meetingID: meetingID, eventID: target.eventID)
             } catch {
                 logger.error("state transition to recorded failed: \(error, privacy: .public)")
             }
         }
         updateStatusForUpcoming()
         rescheduleAutoStart()
+    }
+
+    // MARK: - Processing pipeline
+
+    /// Run transcription for a freshly-recorded meeting and advance
+    /// `recorded → transcribed`. Later phases extend this with diarization etc.
+    func processMeeting(meetingID: Int64, eventID: String) async {
+        guard !isRecording else { return }
+        status = .processing
+        processingMessage = "Transcribing…"
+        defer {
+            processingMessage = nil
+            modelDownloadProgress = nil
+            updateStatusForUpcoming()
+        }
+
+        do {
+            let output = try await asrEngine.transcribeMeeting(
+                eventID: eventID,
+                recordingsRoot: Self.recordingsRoot(),
+                modelProgress: { [weak self] fraction in
+                    Task { @MainActor in
+                        self?.modelDownloadProgress = fraction < 1 ? fraction : nil
+                    }
+                }
+            )
+            try await stateMachine.transition(meeting: meetingID, to: .transcribed)
+            logger.info("transcription complete for \(eventID, privacy: .public): RTFx \(output.transcript.rtfx, privacy: .public)")
+            if output.transcript.warnings.contains(.possiblyUnsupportedLanguage) {
+                warnUnsupportedLanguage(eventID: eventID)
+            }
+        } catch {
+            logger.error("transcription failed for \(eventID, privacy: .public): \(error, privacy: .public)")
+            try? await database.setError(meetingID: meetingID, message: String(describing: error))
+        }
+    }
+
+    private func warnUnsupportedLanguage(eventID: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "Transcript may be unreliable"
+        content.body = "Scribe's transcriber had low confidence — the meeting language may not be supported."
+        let request = UNNotificationRequest(identifier: "lang-\(eventID)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
     }
 
     private func warnZeroSystemAudio(target: RecordingTarget) {

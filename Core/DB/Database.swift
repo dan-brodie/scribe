@@ -128,6 +128,14 @@ final class Database: Sendable {
         }
     }
 
+    func setError(meetingID: Int64, message: String) async throws {
+        try await dbQueue.write { db in
+            guard var meeting = try Meeting.fetchOne(db, id: meetingID) else { return }
+            meeting.error = message
+            try meeting.update(db)
+        }
+    }
+
     func meetingID(forEventID eventID: String) async throws -> Int64? {
         try await dbQueue.read { db in
             try Meeting

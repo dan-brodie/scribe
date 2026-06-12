@@ -1,4 +1,4 @@
-.PHONY: build test lint format format-fix download-models check-licenses clean help phase
+.PHONY: build test lint format format-fix download-models download-fixtures check-licenses clean help phase
 
 PROJECT     = Scribe.xcodeproj
 SCHEME      = Scribe
@@ -12,6 +12,7 @@ help:
 	@echo "  make format          swift-format lint (check only)"
 	@echo "  make format-fix      swift-format in-place"
 	@echo "  make download-models fetch Qwen3-4B + Parakeet to ~/.cache/scribe-models/"
+	@echo "  make download-fixtures fetch ASR test audio into Tests/Fixtures/"
 	@echo "  make check-licenses  fail on non-allowlisted dependency licenses"
 	@echo "  make clean           remove .build/ and DerivedData/"
 	@echo "  make phase           show current phase completion status"
@@ -34,6 +35,9 @@ format-fix:
 
 download-models:
 	bash Scripts/download-models.sh
+
+download-fixtures:
+	bash Scripts/download-fixtures.sh
 
 check-licenses:
 	bash Scripts/check-licenses.sh
