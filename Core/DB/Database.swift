@@ -128,6 +128,15 @@ final class Database: Sendable {
         }
     }
 
+    func meetingID(forEventID eventID: String) async throws -> Int64? {
+        try await dbQueue.read { db in
+            try Meeting
+                .filter(Column("eventID") == eventID)
+                .fetchOne(db)?
+                .id
+        }
+    }
+
     func attendees(forMeeting meetingID: Int64) async throws -> [Attendee] {
         try await dbQueue.read { db in
             try Attendee

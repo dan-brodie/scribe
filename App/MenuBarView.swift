@@ -22,6 +22,10 @@ struct MenuBarView: View {
 
             Divider()
 
+            recordingSection
+
+            Divider()
+
             if coordinator.demoRunning {
                 Button("Stop Demo") { coordinator.stopDemo() }
             } else {
@@ -45,8 +49,23 @@ struct MenuBarView: View {
             .keyboardShortcut("q")
         }
         .task {
-            await coordinator.requestNotificationPermission()
-            await coordinator.startCalendarMonitoringIfAuthorized()
+            await coordinator.start()
+        }
+    }
+
+    @ViewBuilder
+    private var recordingSection: some View {
+        if coordinator.isRecording {
+            Button("Stop Recording") {
+                Task { await coordinator.stopRecording() }
+            }
+            Button("Discard Recording") {
+                Task { await coordinator.discardRecording() }
+            }
+        } else {
+            Button("Record Now") {
+                Task { await coordinator.recordNow() }
+            }
         }
     }
 

@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		1A0000000000000000000083 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 1A0000000000000000000081 /* GRDB */; };
 		1A0000000000000000000084 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 1A0000000000000000000082 /* GRDB */; };
+		1A0000000000000000000092 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 1A0000000000000000000091 /* FluidAudio */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -39,6 +40,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1A0000000000000000000083 /* GRDB in Frameworks */,
+				1A0000000000000000000092 /* FluidAudio in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -96,6 +98,7 @@
 			name = Scribe;
 			packageProductDependencies = (
 				1A0000000000000000000081 /* GRDB */,
+				1A0000000000000000000091 /* FluidAudio */,
 			);
 			productName = Scribe;
 			productReference = 1A0000000000000000000030 /* Scribe.app */;
@@ -156,6 +159,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				1A0000000000000000000080 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+				1A0000000000000000000090 /* XCRemoteSwiftPackageReference "FluidAudio" */,
 			);
 			productRefGroup = 1A0000000000000000000003 /* Products */;
 			projectDirPath = "";
@@ -277,7 +281,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "Scribe needs to record meeting audio from other apps to transcribe your meetings.";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Scribe needs access to your calendar to detect and prepare for upcoming meetings.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Scribe needs microphone access to record your side of meetings.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = net.danbrodie.Scribe;
@@ -299,7 +305,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "Scribe needs to record meeting audio from other apps to transcribe your meetings.";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Scribe needs access to your calendar to detect and prepare for upcoming meetings.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Scribe needs microphone access to record your side of meetings.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = net.danbrodie.Scribe;
@@ -384,6 +392,14 @@
 				minimumVersion = 7.11.0;
 			};
 		};
+		1A0000000000000000000090 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/FluidInference/FluidAudio.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.12.4;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -396,6 +412,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1A0000000000000000000080 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
 			productName = GRDB;
+		};
+		1A0000000000000000000091 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1A0000000000000000000090 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
