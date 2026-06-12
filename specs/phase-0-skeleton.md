@@ -1,6 +1,6 @@
 # Phase 0 — App Shell, DB Schema, State Machine, Logging
 
-status: not-started
+status: complete
 
 ## Goal
 
@@ -8,18 +8,18 @@ Stand up the bare Scribe app: menu bar icon, GRDB schema with migrations, a work
 
 ## Acceptance Criteria
 
-- [ ] App launches as a `MenuBarExtra` (no Dock icon; `LSUIElement = YES`)
-- [ ] Menu bar icon has 5 states: idle, upcoming, recording, processing, error
-- [ ] Settings scene stub opens from the menu (empty, just a window)
-- [ ] Launch-at-login toggle works via `SMAppService`
-- [ ] GRDB migration runs on first launch; `db.sqlite` created in `~/Library/Application Support/Scribe/`
-- [ ] Schema matches spec: `meetings`, `attendees`, `speakers`, `actions`, `voiceProfiles`
-- [ ] `StateMachine` transitions: `recorded → transcribed → diarized → summarized → exported` persisted to SQLite
-- [ ] Invalid transitions are rejected with a logged error, not a crash
-- [ ] Fake meeting rows advance through all states on a timer (demo mode for testing)
-- [ ] `os.Logger` subsystem `com.scribe` set up; all services log with a category label
-- [ ] `UserNotifications` framework integrated; permission requested on first launch
-- [ ] Unit tests pass: state machine transitions, invalid-transition rejection, DB round-trip
+- [x] App launches as a `MenuBarExtra` (no Dock icon; `LSUIElement = YES`)
+- [x] Menu bar icon has 5 states: idle, upcoming, recording, processing, error
+- [x] Settings scene stub opens from the menu (empty, just a window)
+- [x] Launch-at-login toggle works via `SMAppService`
+- [x] GRDB migration runs on first launch; `db.sqlite` created in `~/Library/Application Support/Scribe/`
+- [x] Schema matches spec: `meetings`, `attendees`, `speakers`, `actions`, `voiceProfiles`
+- [x] `StateMachine` transitions: `recorded → transcribed → diarized → summarized → exported` persisted to SQLite
+- [x] Invalid transitions are rejected with a logged error, not a crash
+- [x] Fake meeting rows advance through all states on a timer (demo mode for testing)
+- [x] `os.Logger` subsystem `com.scribe` set up; all services log with a category label
+- [x] `UserNotifications` framework integrated; permission requested on first launch
+- [x] Unit tests pass: state machine transitions, invalid-transition rejection, DB round-trip
 
 ## Key Files to Create
 
