@@ -18,5 +18,12 @@ struct ScribeApp: App {
         Settings {
             SettingsView(coordinator: coordinator)
         }
+
+        // Speaker review window, opened from the menu with a meeting id.
+        WindowGroup("Review Speakers", id: "review", for: Int64.self) { $meetingID in
+            if let meetingID {
+                ReviewPopover(coordinator: coordinator, meetingID: meetingID)
+            }
+        }
     }
 }

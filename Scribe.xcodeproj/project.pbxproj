@@ -32,6 +32,7 @@
 		1A0000000000000000000011 /* Core */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Core; sourceTree = "<group>"; };
 		1A0000000000000000000012 /* Tests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Tests; sourceTree = "<group>"; };
 		1A0000000000000000000013 /* Services */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Services; sourceTree = "<group>"; };
+		1A0000000000000000000014 /* Prompts */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Prompts; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -61,6 +62,7 @@
 				1A0000000000000000000010 /* App */,
 				1A0000000000000000000011 /* Core */,
 				1A0000000000000000000013 /* Services */,
+				1A0000000000000000000014 /* Prompts */,
 				1A0000000000000000000012 /* Tests */,
 				1A0000000000000000000003 /* Products */,
 			);
@@ -94,6 +96,7 @@
 				1A0000000000000000000010 /* App */,
 				1A0000000000000000000011 /* Core */,
 				1A0000000000000000000013 /* Services */,
+				1A0000000000000000000014 /* Prompts */,
 			);
 			name = Scribe;
 			packageProductDependencies = (

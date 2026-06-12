@@ -27,6 +27,16 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Speakers") {
+                Toggle("Remember voices", isOn: $coordinator.rememberVoices)
+                Text("Recognize recurring speakers across meetings by their voice. Stored on-device.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Delete Voice Profiles", role: .destructive) {
+                    Task { await coordinator.deleteVoiceProfiles() }
+                }
+            }
+
             if coordinator.calendarAuthorized {
                 Section("Watched Calendars") {
                     if coordinator.availableCalendars.isEmpty {

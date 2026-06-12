@@ -8,6 +8,7 @@ import SwiftUI
 struct MenuBarView: View {
     @Bindable var coordinator: AppCoordinator
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @Environment(\.openWindow) private var openWindow
 
     private let logger = Log.make("MenuBarView")
 
@@ -31,6 +32,12 @@ struct MenuBarView: View {
             Divider()
 
             recordingSection
+
+            if let meetingID = coordinator.lastDiarizedMeetingID {
+                Button("Review Speakers…") {
+                    openWindow(id: "review", value: meetingID)
+                }
+            }
 
             Divider()
 
