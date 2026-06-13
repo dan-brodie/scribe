@@ -1,0 +1,31 @@
+{
+  "_comment": "Allowlist of permissible SPDX license IDs and the known license of each pinned SPM dependency. check-licenses.sh fails CI if a resolved dependency is missing from `dependencies` (unclassified) or maps to a license not in `allowed_spdx`. When adding a dependency, classify it here.",
+  "allowed_spdx": [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unlicense",
+    "CC0-1.0"
+  ],
+  "dependencies": {
+    "eventsource": "MIT",
+    "fluidaudio": "Apache-2.0",
+    "grdb.swift": "MIT",
+    "mlx-swift": "MIT",
+    "mlx-swift-lm": "MIT",
+    "swift-asn1": "Apache-2.0",
+    "swift-atomics": "Apache-2.0",
+    "swift-collections": "Apache-2.0",
+    "swift-crypto": "Apache-2.0",
+    "swift-huggingface": "Apache-2.0",
+    "swift-jinja": "Apache-2.0",
+    "swift-nio": "Apache-2.0",
+    "swift-numerics": "Apache-2.0",
+    "swift-syntax": "Apache-2.0",
+    "swift-system": "Apache-2.0",
+    "swift-transformers": "Apache-2.0",
+    "yyjson": "MIT"
+  }
+}

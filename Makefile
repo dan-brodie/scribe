@@ -1,27 +1,46 @@
-.PHONY: build test lint format format-fix download-models check-licenses clean help phase
+.PHONY: build release install test lint format format-fix download-models download-fixtures check-licenses clean help phase
 
 PROJECT     = Scribe.xcodeproj
 SCHEME      = Scribe
 TEST_SCHEME = ScribeTests
+DERIVED     = build
+APP         = $(DERIVED)/Build/Products/Release/Scribe.app
+INSTALL_DIR = /Applications
 
 help:
 	@echo "Scribe — available targets:"
-	@echo "  make build           xcodebuild Scribe scheme"
+	@echo "  make build           xcodebuild Scribe scheme (Debug)"
+	@echo "  make release         build a Release Scribe.app into $(DERIVED)/"
+	@echo "  make install         build Release and copy Scribe.app to $(INSTALL_DIR)"
 	@echo "  make test            run ScribeTests"
 	@echo "  make lint            swiftlint --strict"
 	@echo "  make format          swift-format lint (check only)"
 	@echo "  make format-fix      swift-format in-place"
 	@echo "  make download-models fetch Qwen3-4B + Parakeet to ~/.cache/scribe-models/"
+	@echo "  make download-fixtures fetch ASR test audio into Tests/Fixtures/"
 	@echo "  make check-licenses  fail on non-allowlisted dependency licenses"
 	@echo "  make clean           remove .build/ and DerivedData/"
 	@echo "  make phase           show current phase completion status"
 
 build:
-	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug build
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
+		-skipMacroValidation build
+
+release:
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release \
+		-derivedDataPath $(DERIVED) -skipMacroValidation build
+	@echo "Built $(APP)"
+
+install: release
+	@test -d "$(APP)" || { echo "error: $(APP) not found"; exit 1; }
+	@echo "Installing Scribe.app to $(INSTALL_DIR)/ …"
+	rm -rf "$(INSTALL_DIR)/Scribe.app"
+	cp -R "$(APP)" "$(INSTALL_DIR)/Scribe.app"
+	@echo "Installed. Launch from Applications or run: open $(INSTALL_DIR)/Scribe.app"
 
 test:
 	xcodebuild test -project $(PROJECT) -scheme $(TEST_SCHEME) \
-		-destination 'platform=macOS'
+		-skipMacroValidation -destination 'platform=macOS'
 
 lint:
 	swiftlint lint --strict
@@ -35,11 +54,15 @@ format-fix:
 download-models:
 	bash Scripts/download-models.sh
 
+download-fixtures:
+	bash Scripts/download-fixtures.sh
+
 check-licenses:
 	bash Scripts/check-licenses.sh
 
 clean:
 	rm -rf .build/
+	rm -rf $(DERIVED)/
 	rm -rf ~/Library/Developer/Xcode/DerivedData/Scribe-*
 
 phase:

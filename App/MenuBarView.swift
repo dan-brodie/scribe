@@ -8,6 +8,7 @@ import SwiftUI
 struct MenuBarView: View {
     @Bindable var coordinator: AppCoordinator
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @Environment(\.openWindow) private var openWindow
 
     private let logger = Log.make("MenuBarView")
 
@@ -16,6 +17,14 @@ struct MenuBarView: View {
             Label("Scribe — \(coordinator.status.label)", systemImage: coordinator.status.symbolName)
                 .labelStyle(.titleAndIcon)
 
+            if let progress = coordinator.modelDownloadProgress {
+                Text("Downloading model… \(Int(progress * 100))%")
+                    .font(.caption)
+            } else if let message = coordinator.processingMessage {
+                Text(message)
+                    .font(.caption)
+            }
+
             Divider()
 
             nextMeetingSection
@@ -23,6 +32,21 @@ struct MenuBarView: View {
             Divider()
 
             recordingSection
+
+            if let meetingID = coordinator.lastDiarizedMeetingID {
+                Button("Review Speakers…") {
+                    openWindow(id: "review", value: meetingID)
+                }
+            }
+
+            if let meetingID = coordinator.lastExportedMeetingID {
+                Button("Reveal Last Notes in Finder") {
+                    Task { await coordinator.revealExport(meetingID: meetingID) }
+                }
+                Button("Share Last Notes…") {
+                    Task { await coordinator.shareNotes(meetingID: meetingID) }
+                }
+            }
 
             Divider()
 
@@ -47,9 +71,6 @@ struct MenuBarView: View {
                 NSApplication.shared.terminate(nil)
             }
             .keyboardShortcut("q")
-        }
-        .task {
-            await coordinator.start()
         }
     }
 

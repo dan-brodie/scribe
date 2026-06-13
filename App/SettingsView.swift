@@ -27,6 +27,72 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Notes Folder") {
+                HStack {
+                    Text(coordinator.outputFolderDisplayPath)
+                        .font(.callout)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Choose…") { coordinator.chooseOutputFolder() }
+                    Button("Reveal") { coordinator.revealOutputFolder() }
+                }
+                Text("Meeting notes are written here, one folder per meeting.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Recording") {
+                Toggle("Record meetings automatically", isOn: $coordinator.autoRecordEnabled)
+                if !coordinator.hasAcknowledgedConsent {
+                    Label(
+                        "Recording is paused until you acknowledge the consent notice in onboarding.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Sharing") {
+                Toggle("Attach full transcript to shared email", isOn: $coordinator.includeTranscriptInEmail)
+                Text("Off by default — the email contains the summary and action items only.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Summarization") {
+                Picker("Engine", selection: $coordinator.summarizationBackend) {
+                    ForEach(SummarizationBackend.allCases) { backend in
+                        Text(backend.displayName).tag(backend)
+                    }
+                }
+                if coordinator.summarizationBackend == .appleFoundationModels
+                    && !coordinator.appleFoundationModelsAvailable {
+                    Label(
+                        "Apple Intelligence isn't available on this Mac — Scribe will use the downloadable Qwen model instead.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                } else {
+                    Text("Apple runs fully on-device with no download. Qwen runs on-device too but downloads a ~2.5 GB model on first use.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Speakers") {
+                Toggle("Remember voices", isOn: $coordinator.rememberVoices)
+                Text("Recognize recurring speakers across meetings by their voice. Stored on-device.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Delete Voice Profiles", role: .destructive) {
+                    Task { await coordinator.deleteVoiceProfiles() }
+                }
+            }
+
             if coordinator.calendarAuthorized {
                 Section("Watched Calendars") {
                     if coordinator.availableCalendars.isEmpty {
@@ -48,7 +114,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 360)
+        .frame(width: 460, height: 520)
         .navigationTitle("Scribe Settings")
         .task {
             guard !loaded else { return }

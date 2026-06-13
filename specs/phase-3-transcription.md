@@ -1,6 +1,6 @@
 # Phase 3 — Transcription
 
-status: not-started
+status: complete
 
 ## Goal
 
@@ -8,17 +8,17 @@ Integrate FluidAudio Parakeet for on-device ASR of both audio channels, with mod
 
 ## Acceptance Criteria
 
-- [ ] `ASREngine` wraps FluidAudio `AsrManager` (batch) or `StreamingEouAsrManager` (streaming)
-- [ ] First run triggers model download with progress shown in menu bar / notification
-- [ ] Model download uses `AsrModels.downloadAndLoad(version: .v3)` (multilingual)
-- [ ] SHA-256 checksum validated after download; corrupt download retried once then errors
-- [ ] Both mic and system channels transcribed separately, producing word/segment timestamps
-- [ ] Transcripts merged into a single timeline (mic timestamps + system timestamps)
-- [ ] Real-time factor ≥5× on M1 for batch transcription (60 min meeting → ≤12 min)
-- [ ] Unsupported language detected and surfaced as a warning (not a crash)
-- [ ] `segments.json` written to the meeting's recording folder
-- [ ] State machine advances: `recorded → transcribed` on completion
-- [ ] Integration test: `Tests/Fixtures/sample-10min.wav` → timestamped transcript, WER <20% vs. reference
+- [x] `ASREngine` wraps FluidAudio `AsrManager` (batch) or `StreamingEouAsrManager` (streaming)
+- [x] First run triggers model download with progress shown in menu bar / notification
+- [x] Model download uses `AsrModels.downloadAndLoad(version: .v3)` (multilingual)
+- [x] SHA-256 checksum validated after download; corrupt download retried once then errors
+- [x] Both mic and system channels transcribed separately, producing word/segment timestamps
+- [x] Transcripts merged into a single timeline (mic timestamps + system timestamps)
+- [x] Real-time factor ≥5× on M1 for batch transcription (60 min meeting → ≤12 min)
+- [x] Unsupported language detected and surfaced as a warning (not a crash)
+- [x] `segments.json` written to the meeting's recording folder
+- [x] State machine advances: `recorded → transcribed` on completion
+- [x] Integration test: `Tests/Fixtures/sample-10min.wav` → timestamped transcript, WER <20% vs. reference
 
 ## Key Files to Create
 

@@ -128,6 +128,30 @@ final class Database: Sendable {
         }
     }
 
+    func meeting(id: Int64) async throws -> Meeting? {
+        try await dbQueue.read { db in
+            try Meeting.fetchOne(db, id: id)
+        }
+    }
+
+    func setError(meetingID: Int64, message: String) async throws {
+        try await dbQueue.write { db in
+            guard var meeting = try Meeting.fetchOne(db, id: meetingID) else { return }
+            meeting.error = message
+            try meeting.update(db)
+        }
+    }
+
+    /// Record where a meeting's notes were exported (the "Reveal in Finder"
+    /// target and the dir reused by re-exports after a speaker reassignment).
+    func setExportPath(meetingID: Int64, path: String) async throws {
+        try await dbQueue.write { db in
+            guard var meeting = try Meeting.fetchOne(db, id: meetingID) else { return }
+            meeting.exportPath = path
+            try meeting.update(db)
+        }
+    }
+
     func meetingID(forEventID eventID: String) async throws -> Int64? {
         try await dbQueue.read { db in
             try Meeting
@@ -142,6 +166,102 @@ final class Database: Sendable {
             try Attendee
                 .filter(Column("meetingID") == meetingID)
                 .fetchAll(db)
+        }
+    }
+
+    // MARK: - Speakers
+
+    /// Replace all speaker rows for a meeting.
+    func replaceSpeakers(meetingID: Int64, speakers: [Speaker]) async throws {
+        try await dbQueue.write { db in
+            try Speaker
+                .filter(Column("meetingID") == meetingID)
+                .deleteAll(db)
+            for speaker in speakers {
+                var copy = speaker
+                copy.meetingID = meetingID
+                try copy.insert(db)
+            }
+        }
+    }
+
+    func speakers(forMeeting meetingID: Int64) async throws -> [Speaker] {
+        try await dbQueue.read { db in
+            try Speaker
+                .filter(Column("meetingID") == meetingID)
+                .fetchAll(db)
+        }
+    }
+
+    /// Reassign a single speaker (used by the Review popover).
+    func updateSpeakerAssignment(speakerID: Int64, attendeeEmail: String?, confidence: Double, provenance: String) async throws {
+        try await dbQueue.write { db in
+            guard var speaker = try Speaker.fetchOne(db, id: speakerID) else { return }
+            speaker.assignedAttendee = attendeeEmail
+            speaker.confidence = confidence
+            speaker.provenance = provenance
+            try speaker.update(db)
+        }
+    }
+
+    // MARK: - Actions
+
+    /// Replace all action rows for a meeting (idempotent re-summarization).
+    func replaceActions(meetingID: Int64, actions: [ActionItem]) async throws {
+        try await dbQueue.write { db in
+            try ActionItem
+                .filter(Column("meetingID") == meetingID)
+                .deleteAll(db)
+            for action in actions {
+                var copy = action
+                copy.meetingID = meetingID
+                try copy.insert(db)
+            }
+        }
+    }
+
+    func actions(forMeeting meetingID: Int64) async throws -> [ActionItem] {
+        try await dbQueue.read { db in
+            try ActionItem
+                .filter(Column("meetingID") == meetingID)
+                .fetchAll(db)
+        }
+    }
+
+    // MARK: - Voice profiles
+
+    func upsertVoiceProfile(email: String, name: String, embedding: [Float]) async throws {
+        try await dbQueue.write { db in
+            let blob = EmbeddingCodec.encode(embedding)
+            if var existing = try VoiceProfile.filter(Column("personEmail") == email).fetchOne(db) {
+                // Average the new embedding into the stored one.
+                let merged = VoiceMath.mean([EmbeddingCodec.decode(existing.embeddingBlob), embedding])
+                existing.name = name
+                existing.embeddingBlob = merged.isEmpty ? blob : EmbeddingCodec.encode(merged)
+                existing.sampleCount += 1
+                try existing.update(db)
+            } else {
+                var profile = VoiceProfile(
+                    id: nil,
+                    personEmail: email,
+                    name: name,
+                    embeddingBlob: blob,
+                    sampleCount: 1
+                )
+                try profile.insert(db)
+            }
+        }
+    }
+
+    func allVoiceProfiles() async throws -> [VoiceProfile] {
+        try await dbQueue.read { db in
+            try VoiceProfile.fetchAll(db)
+        }
+    }
+
+    func deleteAllVoiceProfiles() async throws {
+        _ = try await dbQueue.write { db in
+            try VoiceProfile.deleteAll(db)
         }
     }
 }
