@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import AppKit
 import AVFoundation
 import Foundation
 import Observation
@@ -71,6 +72,29 @@ final class AppCoordinator {
     }
     /// The most recently diarized meeting, offered for review in the menu.
     private(set) var lastDiarizedMeetingID: Int64?
+    /// The most recently exported meeting, surfaced in the menu for reveal/share.
+    private(set) var lastExportedMeetingID: Int64?
+    /// The folder the last export was written to (the Reveal/Share target).
+    private(set) var lastExportURL: URL?
+
+    /// Where notes are written; user-configurable in Settings.
+    let outputFolderStore = OutputFolderStore()
+
+    /// Whether to attach the full transcript to shared emails. Off by default
+    /// (ADR-006 / open question 3).
+    var includeTranscriptInEmail: Bool {
+        didSet { UserDefaults.standard.set(includeTranscriptInEmail, forKey: Self.includeTranscriptKey) }
+    }
+
+    /// Whether the first-launch onboarding wizard still needs to run.
+    private(set) var needsOnboarding: Bool
+    /// Whether the user has acknowledged the recording-consent notice. Recording
+    /// is blocked until this is true (Phase 6 acceptance criterion).
+    private(set) var hasAcknowledgedConsent: Bool
+
+    private static let includeTranscriptKey = "includeTranscriptInEmail"
+    private static let onboardedKey = "didCompleteOnboarding"
+    private static let consentKey = "hasAcknowledgedRecordingConsent"
 
     let database: Database
     let stateMachine: StateMachine
@@ -107,6 +131,11 @@ final class AppCoordinator {
     private var snippetPlayer: AVAudioPlayer?
 
     init() {
+        let defaults = UserDefaults.standard
+        includeTranscriptInEmail = defaults.bool(forKey: Self.includeTranscriptKey)
+        needsOnboarding = !defaults.bool(forKey: Self.onboardedKey)
+        hasAcknowledgedConsent = defaults.bool(forKey: Self.consentKey)
+
         let db: Database
         do {
             db = try Database.makeDefault()
@@ -141,6 +170,7 @@ final class AppCoordinator {
     /// One-shot launch setup invoked from the UI: permissions, capture handlers,
     /// and calendar monitoring.
     func start() async {
+        NotificationActionHandler.shared.register()
         await requestNotificationPermission()
         await configureCaptureHandlers()
         await startCalendarMonitoringIfAuthorized()
@@ -285,6 +315,11 @@ final class AppCoordinator {
     }
 
     private func startCapture(_ target: RecordingTarget) async {
+        guard hasAcknowledgedConsent else {
+            logger.info("recording blocked for \(target.eventID, privacy: .public): consent not acknowledged")
+            notifyConsentRequired()
+            return
+        }
         do {
             try await captureService.startRecording(for: target)
             isRecording = true
@@ -478,10 +513,151 @@ final class AppCoordinator {
 
             try await stateMachine.transition(meeting: meetingID, to: .summarized)
             logger.info("summarized \(eventID, privacy: .public): \(result.summary.actionItems.count, privacy: .public) actions, degraded=\(result.degraded, privacy: .public)")
+            await exportMeeting(meetingID: meetingID, eventID: eventID)
         } catch {
             logger.error("summarization failed for \(eventID, privacy: .public): \(error, privacy: .public)")
             try? await database.setError(meetingID: meetingID, message: String(describing: error))
         }
+    }
+
+    // MARK: - Export & sharing
+
+    /// Copy the rendered artifacts into the user's output folder and advance
+    /// `summarized → exported`. Posts a notification whose banner/Reveal action
+    /// opens the notes folder in Finder.
+    private func exportMeeting(meetingID: Int64, eventID: String) async {
+        processingMessage = "Exporting…"
+        do {
+            guard let meeting = try await database.meeting(id: meetingID) else { return }
+            let dir = try performExport(meeting: meeting, eventID: eventID)
+            try await database.setExportPath(meetingID: meetingID, path: dir.path)
+            try await stateMachine.transition(meeting: meetingID, to: .exported)
+            lastExportedMeetingID = meetingID
+            lastExportURL = dir
+            notifyExported(title: meeting.title, dir: dir)
+            logger.info("exported \(eventID, privacy: .public) → \(dir.lastPathComponent, privacy: .public)")
+        } catch {
+            logger.error("export failed for \(eventID, privacy: .public): \(error, privacy: .public)")
+            try? await database.setError(meetingID: meetingID, message: String(describing: error))
+        }
+    }
+
+    /// Write the four artifacts to the output folder, reusing the meeting's
+    /// existing export directory on a re-export (e.g. after a reassignment).
+    @discardableResult
+    private func performExport(meeting: Meeting, eventID: String) throws -> URL {
+        let workingDir = Self.recordingsRoot().appendingPathComponent(eventID, isDirectory: true)
+        let root = outputFolderStore.folder()
+        let accessing = root.startAccessingSecurityScopedResource()
+        defer { if accessing { root.stopAccessingSecurityScopedResource() } }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let existing = meeting.exportPath.map { URL(fileURLWithPath: $0) }
+        return try FileExporter(outputRoot: root).export(
+            title: meeting.title,
+            date: meeting.start,
+            workingDir: workingDir,
+            existingExportDir: existing
+        )
+    }
+
+    private func notifyExported(title: String, dir: URL) {
+        let content = UNMutableNotificationContent()
+        content.title = "Notes ready"
+        content.body = "\(title) — saved to your notes folder."
+        content.categoryIdentifier = NotificationActionHandler.exportCategoryID
+        content.userInfo = [NotificationActionHandler.pathKey: dir.path]
+        let request = UNNotificationRequest(identifier: "export-\(dir.lastPathComponent)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private func notifyConsentRequired() {
+        let content = UNMutableNotificationContent()
+        content.title = "Recording paused"
+        content.body = "Open Scribe and acknowledge the recording notice to enable recording."
+        let request = UNNotificationRequest(identifier: "consent-required", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    /// Reveal an exported meeting's notes folder in Finder.
+    func revealExport(meetingID: Int64) async {
+        guard let meeting = try? await database.meeting(id: meetingID), let path = meeting.exportPath else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+    }
+
+    /// Open a pre-addressed email draft of an exported meeting's notes.
+    func shareNotes(meetingID: Int64) async {
+        guard let meeting = try? await database.meeting(id: meetingID), let path = meeting.exportPath else { return }
+        let dir = URL(fileURLWithPath: path)
+        let body = (try? String(contentsOf: dir.appendingPathComponent("notes.txt"), encoding: .utf8)) ?? ""
+        let attendees = (try? await database.attendees(forMeeting: meetingID)) ?? []
+        let emails = attendees.compactMap { $0.role == "self" ? nil : $0.email }
+        let draft = Sharer.makeDraft(
+            title: meeting.title,
+            date: meeting.start,
+            attendeeEmails: emails,
+            notesBody: body,
+            transcriptURL: includeTranscriptInEmail ? dir.appendingPathComponent("transcript.txt") : nil
+        )
+        Sharer.share(draft)
+    }
+
+    // MARK: - Output folder settings
+
+    var outputFolderDisplayPath: String {
+        (outputFolderStore.folder().path as NSString).abbreviatingWithTildeInPath
+    }
+
+    /// Present a directory picker and persist the chosen output folder.
+    func chooseOutputFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        panel.directoryURL = outputFolderStore.folder()
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        outputFolderStore.setFolder(url)
+    }
+
+    func revealOutputFolder() {
+        let url = outputFolderStore.folder()
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    // MARK: - Onboarding & permissions
+
+    /// Request microphone access; returns whether it was granted.
+    func requestMicrophoneAccess() async -> Bool {
+        await AVCaptureDevice.requestAccess(for: .audio)
+    }
+
+    /// Trigger the system-audio TCC prompt by briefly creating and tearing down
+    /// a process tap. Returns whether a tap could be established.
+    func requestSystemAudioAccess() async -> Bool {
+        guard #available(macOS 14.4, *) else { return false }
+        return await Task.detached {
+            do {
+                let tap = try SystemAudioTapFactory.create(name: "ScribePermissionProbe")
+                SystemAudioTapFactory.destroy(tap)
+                return true
+            } catch {
+                return false
+            }
+        }.value
+    }
+
+    /// Record that the user acknowledged the recording-consent notice.
+    func acknowledgeConsent() {
+        hasAcknowledgedConsent = true
+        UserDefaults.standard.set(true, forKey: Self.consentKey)
+    }
+
+    /// Mark first-launch onboarding complete.
+    func completeOnboarding() {
+        needsOnboarding = false
+        UserDefaults.standard.set(true, forKey: Self.onboardedKey)
     }
 
     private func persistActions(meetingID: Int64, actions: [ExtractedAction]) async throws {
@@ -616,6 +792,11 @@ final class AppCoordinator {
             if let meeting = try await database.meeting(id: meetingID) {
                 let dir = Self.recordingsRoot().appendingPathComponent(meeting.eventID, isDirectory: true)
                 try ArtifactWriter(meetingDir: dir).rewriteAfterReassignment(displayName: resolver)
+                // If the meeting was already exported, refresh the user-facing
+                // copy so the corrected names appear there too.
+                if meeting.state == .exported {
+                    _ = try? performExport(meeting: meeting, eventID: meeting.eventID)
+                }
             }
 
             // Enrollment: learn this voice once the user confirms a name.

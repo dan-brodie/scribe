@@ -39,6 +39,15 @@ struct MenuBarView: View {
                 }
             }
 
+            if let meetingID = coordinator.lastExportedMeetingID {
+                Button("Reveal Last Notes in Finder") {
+                    Task { await coordinator.revealExport(meetingID: meetingID) }
+                }
+                Button("Share Last Notes…") {
+                    Task { await coordinator.shareNotes(meetingID: meetingID) }
+                }
+            }
+
             Divider()
 
             if coordinator.demoRunning {
@@ -62,9 +71,6 @@ struct MenuBarView: View {
                 NSApplication.shared.terminate(nil)
             }
             .keyboardShortcut("q")
-        }
-        .task {
-            await coordinator.start()
         }
     }
 

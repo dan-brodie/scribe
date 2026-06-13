@@ -1,58 +1,85 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ALLOWLIST=("MIT" "Apache-2.0" "BSD-2-Clause" "BSD-3-Clause" "ISC" "Unlicense" "CC0-1.0")
+# Fails if any resolved SPM dependency is unclassified or carries a license
+# outside the allowlist in Scripts/licenses.json. The set of dependencies is
+# read from the Xcode workspace's Package.resolved (the source of truth for what
+# is actually linked); falls back to `swift package` for a plain SPM checkout.
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ALLOWLIST_JSON="${ROOT}/Scripts/licenses.json"
+RESOLVED="${ROOT}/Scribe.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 
 echo "Scribe license checker"
-echo "Allowlist: ${ALLOWLIST[*]}"
-echo ""
 
-# Generate dependency list
-if ! swift package show-dependencies --format json > /tmp/scribe-deps.json 2>/dev/null; then
-    echo "[SKIP] Not a Swift package directory or swift package unavailable; skipping license check."
-    exit 0
-fi
-
-UNKNOWN=0
-# Parse using python (available on macOS) or jq if present
-if command -v jq &>/dev/null; then
-    DEPS=$(jq -r '.. | objects | select(.name? and .url?) | "\(.name) \(.url)"' /tmp/scribe-deps.json)
-else
-    DEPS=$(python3 -c "
-import json, sys
-data = json.load(open('/tmp/scribe-deps.json'))
-def walk(node):
-    if isinstance(node, dict):
-        if 'name' in node and 'url' in node:
-            print(node['name'], node['url'])
-        for v in node.values():
-            walk(v)
-    elif isinstance(node, list):
-        for item in node:
-            walk(item)
-walk(data)
-")
-fi
-
-if [[ -z "${DEPS}" ]]; then
-    echo "No dependencies found."
-    exit 0
-fi
-
-while IFS= read -r line; do
-    name=$(echo "${line}" | awk '{print $1}')
-    url=$(echo "${line}" | awk '{print $2}')
-    echo "  Checking: ${name} (${url})"
-    # In a full implementation, fetch the LICENSE file from the repo and classify it.
-    # For now, flag known non-allowlisted packages.
-    echo "    [?] License detection not yet automated — verify manually."
-done <<< "${DEPS}"
-
-if [[ ${UNKNOWN} -gt 0 ]]; then
-    echo ""
-    echo "[FAIL] ${UNKNOWN} dependency/dependencies with unknown or non-allowlisted licenses."
+if [[ ! -f "${ALLOWLIST_JSON}" ]]; then
+    echo "[FAIL] missing allowlist: ${ALLOWLIST_JSON}"
     exit 1
 fi
 
-echo ""
-echo "[PASS] All checked dependencies have allowlisted licenses."
+# Collect resolved dependency identities. Prefer Package.resolved; otherwise try
+# `swift package show-dependencies` for a non-Xcode checkout.
+if [[ -f "${RESOLVED}" ]]; then
+    SOURCE="${RESOLVED}"
+elif swift package show-dependencies --format json > /tmp/scribe-deps.json 2>/dev/null; then
+    SOURCE="/tmp/scribe-deps.json"
+else
+    echo "[SKIP] no Package.resolved and swift package unavailable; skipping."
+    exit 0
+fi
+
+python3 - "${ALLOWLIST_JSON}" "${SOURCE}" <<'PY'
+import json
+import sys
+
+allowlist_path, source_path = sys.argv[1], sys.argv[2]
+
+spec = json.load(open(allowlist_path))
+allowed = set(spec.get("allowed_spdx", []))
+known = {k.lower(): v for k, v in spec.get("dependencies", {}).items()}
+
+data = json.load(open(source_path))
+
+# Package.resolved (v2/v3) has top-level "pins"; show-dependencies output nests
+# "identity"/"name" through a tree. Handle both.
+identities = set()
+if isinstance(data, dict) and "pins" in data:
+    for pin in data["pins"]:
+        identities.add(pin["identity"].lower())
+elif isinstance(data, dict) and "object" in data and "pins" in data["object"]:
+    for pin in data["object"]["pins"]:
+        identities.add(pin["identity"].lower())
+else:
+    def walk(node):
+        if isinstance(node, dict):
+            ident = node.get("identity") or node.get("name")
+            if ident:
+                identities.add(str(ident).lower())
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+    walk(data)
+
+print(f"Allowlist: {', '.join(sorted(allowed))}")
+print(f"Dependencies resolved: {len(identities)}\n")
+
+failures = []
+for ident in sorted(identities):
+    license = known.get(ident)
+    if license is None:
+        print(f"  [?] {ident}: UNCLASSIFIED — add it to Scripts/licenses.json")
+        failures.append(ident)
+    elif license not in allowed:
+        print(f"  [x] {ident}: {license} — not in allowlist")
+        failures.append(ident)
+    else:
+        print(f"  [ok] {ident}: {license}")
+
+if failures:
+    print(f"\n[FAIL] {len(failures)} dependency/dependencies need attention.")
+    sys.exit(1)
+
+print("\n[PASS] All resolved dependencies have allowlisted licenses.")
+PY

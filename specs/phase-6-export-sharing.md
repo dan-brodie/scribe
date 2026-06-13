@@ -1,6 +1,6 @@
 # Phase 6 — File Export, Sharing, Onboarding, Polish
 
-status: not-started
+status: complete
 
 ## Goal
 

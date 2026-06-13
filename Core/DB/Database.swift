@@ -142,6 +142,16 @@ final class Database: Sendable {
         }
     }
 
+    /// Record where a meeting's notes were exported (the "Reveal in Finder"
+    /// target and the dir reused by re-exports after a speaker reassignment).
+    func setExportPath(meetingID: Int64, path: String) async throws {
+        try await dbQueue.write { db in
+            guard var meeting = try Meeting.fetchOne(db, id: meetingID) else { return }
+            meeting.exportPath = path
+            try meeting.update(db)
+        }
+    }
+
     func meetingID(forEventID eventID: String) async throws -> Int64? {
         try await dbQueue.read { db in
             try Meeting

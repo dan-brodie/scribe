@@ -27,6 +27,41 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Notes Folder") {
+                HStack {
+                    Text(coordinator.outputFolderDisplayPath)
+                        .font(.callout)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Choose…") { coordinator.chooseOutputFolder() }
+                    Button("Reveal") { coordinator.revealOutputFolder() }
+                }
+                Text("Meeting notes are written here, one folder per meeting.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Recording") {
+                Toggle("Record meetings automatically", isOn: $coordinator.autoRecordEnabled)
+                if !coordinator.hasAcknowledgedConsent {
+                    Label(
+                        "Recording is paused until you acknowledge the consent notice in onboarding.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Sharing") {
+                Toggle("Attach full transcript to shared email", isOn: $coordinator.includeTranscriptInEmail)
+                Text("Off by default — the email contains the summary and action items only.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Summarization") {
                 Picker("Engine", selection: $coordinator.summarizationBackend) {
                     ForEach(SummarizationBackend.allCases) { backend in
@@ -79,7 +114,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 360)
+        .frame(width: 460, height: 520)
         .navigationTitle("Scribe Settings")
         .task {
             guard !loaded else { return }
