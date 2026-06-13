@@ -27,6 +27,27 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Summarization") {
+                Picker("Engine", selection: $coordinator.summarizationBackend) {
+                    ForEach(SummarizationBackend.allCases) { backend in
+                        Text(backend.displayName).tag(backend)
+                    }
+                }
+                if coordinator.summarizationBackend == .appleFoundationModels
+                    && !coordinator.appleFoundationModelsAvailable {
+                    Label(
+                        "Apple Intelligence isn't available on this Mac — Scribe will use the downloadable Qwen model instead.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                } else {
+                    Text("Apple runs fully on-device with no download. Qwen runs on-device too but downloads a ~2.5 GB model on first use.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Speakers") {
                 Toggle("Remember voices", isOn: $coordinator.rememberVoices)
                 Text("Recognize recurring speakers across meetings by their voice. Stored on-device.")

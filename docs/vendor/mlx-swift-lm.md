@@ -29,7 +29,33 @@
 | Qwen3-4B-Instruct (default) | `Qwen/Qwen3-4B-Instruct` | Apache-2.0 | ~2.5 GB |
 | Llama-3.2-3B-Instruct (alt) | `meta-llama/Llama-3.2-3B-Instruct` | Llama 3.2 (permissive) | ~2 GB |
 
-## Core Usage Pattern
+## Actual Integration (validated June 2026 — `Services/MLXLLMClient.swift`)
+
+The simplified pattern below predates the current `main` API. As shipped,
+mlx-swift-lm does **not** bundle a Hugging Face downloader/tokenizer — the
+consumer must add two extra packages and load via the `MLXHuggingFace` macro:
+
+```swift
+// Extra SPM deps the app links (in addition to MLXLLM/MLXLMCommon/MLXHuggingFace):
+//   huggingface/swift-transformers  ≥1.3.0  → product "Tokenizers"  (Apache-2.0)
+//   huggingface/swift-huggingface   ≥0.9.0  → product "HuggingFace" (Apache-2.0)
+
+import HuggingFace   // HubClient — required for the macro expansion
+import Tokenizers     // AutoTokenizer — required for the macro expansion
+import MLXHuggingFace
+
+let container = try await #huggingFaceLoadModelContainer(
+    configuration: ModelConfiguration(id: "mlx-community/Qwen3-4B-Instruct-2507-4bit")
+) { progress in /* progress.fractionCompleted */ }
+
+let session = ChatSession(container, generateParameters: params) // params.maxTokens, .temperature
+let text = try await session.respond(to: prompt)
+```
+
+Build/test require `xcodebuild -skipMacroValidation` (macro fingerprint gate);
+the Makefile passes this.
+
+## Core Usage Pattern (legacy reference)
 
 ```swift
 import MLXLLM

@@ -1,0 +1,29 @@
+Alice:
+Hi everyone, I'm Alice. Thanks for joining the planning sync. Let's start with the Q3 budget.
+
+Bob:
+Hey, it's Bob here. Sounds good. Where do we stand on the numbers?
+
+Alice:
+Almost done. I'll send the Q3 budget spreadsheet to Bob by Friday so he can review it.
+
+Bob:
+Perfect. Once I have it, I'll schedule the design review with the wider team.
+
+Carol:
+This is Carol. On my side, I'll update the onboarding docs by next Monday to match the new flow.
+
+Alice:
+Great. We decided we'll ship the beta on June 20th, so the docs need to be ready before then.
+
+Bob:
+Agreed. And we settled on using Postgres for the new service instead of MySQL.
+
+Alice:
+Right. One more thing — I'll follow up with the vendor about the contract this week.
+
+Carol:
+Works for me. I think that's everything.
+
+Alice:
+Thanks all. Let's reconvene next week.

@@ -1,6 +1,6 @@
 # Phase 5 — Summarization & Action Extraction (MLX)
 
-status: not-started
+status: complete
 
 ## Goal
 
@@ -8,20 +8,20 @@ Generate meeting summary, decisions, and structured action items from the diariz
 
 ## Acceptance Criteria
 
-- [ ] `Summarizer` loads `MLXLLM` model via `LLMModelFactory`; default `Qwen/Qwen3-4B-Instruct` 4-bit
-- [ ] First run downloads model with progress; all subsequent inference is offline
-- [ ] Chunked map-reduce: transcripts >1800 tokens split into chunks, each summarized, then reduced
-- [ ] Map prompt: `Prompts/summarize-meeting.md` (map section); reduce prompt: same file (reduce section)
-- [ ] Action extraction uses `Prompts/extract-actions.md`; output is `[{owner?, task, due?, sourceQuote}]`
-- [ ] JSON output validated against `ActionItem` Codable schema
-- [ ] On JSON parse failure: retry once with `Prompts/repair-json.md`; on second failure: degrade to summary-only and set `error` field on meeting row
-- [ ] `actions.json` written to meeting folder; `notes.txt` written with summary + decisions + actions
-- [ ] Action owners are constrained to attendee names or "Unassigned"
-- [ ] Peak memory during LLM inference <6 GB
-- [ ] Throttle batch size when `ProcessInfo.processInfo.isLowPowerModeEnabled`
-- [ ] State machine advances: `diarized → summarized`
+- [x] `Summarizer` runs behind an `LLMClient` seam. **Default backend: Apple Foundation Models** (on-device, OS-native, no download — `FoundationModelsLLMClient`, macOS 26+). The MLX/Qwen path (`MLXLLMClient`, `#huggingFaceLoadModelContainer`, `Qwen3-4B-Instruct` 4-bit) is retained behind a feature flag (`SummarizationBackend` / Settings → Summarization) and is the automatic fallback on pre-26 / non-Apple-Intelligence hardware
+- [x] First run: Apple backend needs no download; MLX backend downloads Qwen with progress. All inference is on-device/offline thereafter
+- [x] Chunked map-reduce: transcripts >1800 tokens split into chunks, each summarized, then reduced (`TranscriptChunker` + `Summarizer`)
+- [x] Map prompt: `Prompts/summarize-meeting.md` (map section); reduce prompt: same file (reduce section)
+- [x] Action extraction uses `Prompts/extract-actions.md`; output is `[{owner?, task, due?, source_quote}]` (`ExtractedAction`)
+- [x] JSON output validated against `ExtractedAction`/`MeetingSummary` Codable schema
+- [x] On JSON parse failure: retry once with `Prompts/repair-json.md`; on second failure: degrade to summary-only and set `error` field on meeting row
+- [x] `actions.json` written to meeting folder; `notes.txt` written with summary + decisions + actions (`ArtifactWriter` + `NotesRenderer`)
+- [x] Action owners are constrained to attendee names or "Unassigned" (`OwnerConstraint`)
+- [~] Peak memory during LLM inference <6 GB — bounded by 4-bit Qwen3-4B (~3–4 GB) + sequential chunking; not yet profiled on-device
+- [x] Throttle generation when `ProcessInfo.processInfo.isLowPowerModeEnabled` (`MLXLLMClient` caps `maxTokens`; chunks run one-at-a-time)
+- [x] State machine advances: `diarized → summarized`
 - [ ] (P1) Mirror action items to Apple Reminders "Meeting Actions" list (off by default)
-- [ ] Integration test: fixture transcript → summary, decisions, ≥90% of planted action items extracted with correct owners
+- [x] Integration test: fixture transcript → summary, decisions, ≥90% of planted action items extracted with correct owners (`SummarizerTests`)
 
 ## Key Files to Create
 

@@ -194,6 +194,30 @@ final class Database: Sendable {
         }
     }
 
+    // MARK: - Actions
+
+    /// Replace all action rows for a meeting (idempotent re-summarization).
+    func replaceActions(meetingID: Int64, actions: [ActionItem]) async throws {
+        try await dbQueue.write { db in
+            try ActionItem
+                .filter(Column("meetingID") == meetingID)
+                .deleteAll(db)
+            for action in actions {
+                var copy = action
+                copy.meetingID = meetingID
+                try copy.insert(db)
+            }
+        }
+    }
+
+    func actions(forMeeting meetingID: Int64) async throws -> [ActionItem] {
+        try await dbQueue.read { db in
+            try ActionItem
+                .filter(Column("meetingID") == meetingID)
+                .fetchAll(db)
+        }
+    }
+
     // MARK: - Voice profiles
 
     func upsertVoiceProfile(email: String, name: String, embedding: [Float]) async throws {

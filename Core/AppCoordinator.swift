@@ -81,6 +81,14 @@ final class AppCoordinator {
     let speakerNamer = SpeakerNamer()
     let voiceStore: VoiceEnrollmentStore
 
+    /// Summarization backend. Apple's on-device model by default; the MLX/Qwen
+    /// path stays available behind this flag.
+    var summarizationBackend: SummarizationBackend = .configured {
+        didSet { SummarizationBackend.store(summarizationBackend) }
+    }
+    /// Whether Apple's on-device model is usable right now (for the settings hint).
+    var appleFoundationModelsAvailable: Bool { SummarizerClientFactory.appleFoundationModelsAvailable }
+
     /// Label used for the local user's (mic) speaker.
     static let localUserLabel = "you"
 
@@ -410,10 +418,77 @@ final class AppCoordinator {
             try await stateMachine.transition(meeting: meetingID, to: .diarized)
             lastDiarizedMeetingID = meetingID
             logger.info("diarized \(eventID, privacy: .public): \(assignments.count, privacy: .public) speakers")
+            await summarizeMeeting(meetingID: meetingID, eventID: eventID)
         } catch {
             logger.error("diarization failed for \(eventID, privacy: .public): \(error, privacy: .public)")
             try? await database.setError(meetingID: meetingID, message: String(describing: error))
         }
+    }
+
+    // MARK: - Summarization
+
+    /// Summarize the diarized transcript (ADR-001), write `actions.json` and
+    /// `notes.txt`, persist action rows, and advance `diarized → summarized`.
+    /// On a JSON-degrade the meeting still advances with a recorded note.
+    private func summarizeMeeting(meetingID: Int64, eventID: String) async {
+        processingMessage = "Summarizing…"
+        let dir = Self.recordingsRoot().appendingPathComponent(eventID, isDirectory: true)
+        let writer = ArtifactWriter(meetingDir: dir)
+
+        guard let transcript = writer.loadTranscriptText(), !transcript.isEmpty else {
+            logger.error("no transcript text to summarize for \(eventID, privacy: .public)")
+            return
+        }
+
+        do {
+            let meeting = try await database.meeting(id: meetingID)
+            let attendees = try await database.attendees(forMeeting: meetingID).map(\.name)
+            let title = meeting?.title ?? "Meeting"
+            let dateString = meeting.map {
+                DateFormatter.localizedString(from: $0.start, dateStyle: .medium, timeStyle: .short)
+            } ?? ""
+
+            // Build the summarizer with the currently-selected backend so a flag
+            // change takes effect on the next meeting without a relaunch. Apple's
+            // on-device model needs no download (prepareModel is then a no-op).
+            let summarizer = Summarizer(client: SummarizerClientFactory.makeClient(backend: summarizationBackend))
+            try await summarizer.prepareModel(progress: { [weak self] fraction in
+                Task { @MainActor in
+                    self?.modelDownloadProgress = fraction < 1 ? fraction : nil
+                }
+            })
+
+            let result = try await summarizer.summarize(
+                transcript: transcript,
+                attendees: attendees,
+                title: title,
+                date: dateString
+            )
+
+            try writer.writeActions(result.summary.actionItems)
+            try writer.writeNotes(NotesRenderer.render(result.summary, dateString: dateString))
+            try await persistActions(meetingID: meetingID, actions: result.summary.actionItems)
+
+            if result.degraded {
+                try? await database.setError(
+                    meetingID: meetingID,
+                    message: "Summary degraded: model JSON could not be parsed; summary-only result written."
+                )
+            }
+
+            try await stateMachine.transition(meeting: meetingID, to: .summarized)
+            logger.info("summarized \(eventID, privacy: .public): \(result.summary.actionItems.count, privacy: .public) actions, degraded=\(result.degraded, privacy: .public)")
+        } catch {
+            logger.error("summarization failed for \(eventID, privacy: .public): \(error, privacy: .public)")
+            try? await database.setError(meetingID: meetingID, message: String(describing: error))
+        }
+    }
+
+    private func persistActions(meetingID: Int64, actions: [ExtractedAction]) async throws {
+        let rows = actions.map {
+            ActionItem(id: nil, meetingID: meetingID, owner: $0.owner, task: $0.task, due: nil, done: $0.done)
+        }
+        try await database.replaceActions(meetingID: meetingID, actions: rows)
     }
 
     private func orderedSpeakerLabels(_ diarized: [DiarizedSegment]) -> [String] {

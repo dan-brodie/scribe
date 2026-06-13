@@ -12,10 +12,12 @@ struct ArtifactWriter {
     static let linesName = "transcript-lines.json"
     static let transcriptName = "transcript.txt"
     static let actionsName = "actions.json"
+    static let notesName = "notes.txt"
 
     private var linesURL: URL { meetingDir.appendingPathComponent(Self.linesName) }
     private var transcriptURL: URL { meetingDir.appendingPathComponent(Self.transcriptName) }
     private var actionsURL: URL { meetingDir.appendingPathComponent(Self.actionsName) }
+    private var notesURL: URL { meetingDir.appendingPathComponent(Self.notesName) }
 
     // MARK: - Speaker-labelled lines (re-render source)
 
@@ -27,6 +29,26 @@ struct ArtifactWriter {
     func loadLines() -> [SpeakerLine]? {
         guard let data = try? Data(contentsOf: linesURL) else { return nil }
         return try? JSONDecoder().decode([SpeakerLine].self, from: data)
+    }
+
+    /// The rendered `transcript.txt`, used as LLM input for summarization.
+    func loadTranscriptText() -> String? {
+        try? String(contentsOf: transcriptURL, encoding: .utf8)
+    }
+
+    // MARK: - Summarization artifacts
+
+    /// Write `actions.json` — the structured action items (`source_quote` and
+    /// `done` included), pretty-printed for greppability.
+    func writeActions(_ actions: [ExtractedAction]) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try atomicWrite(try encoder.encode(actions), to: actionsURL)
+    }
+
+    /// Write the human-facing `notes.txt` (summary + decisions + actions).
+    func writeNotes(_ text: String) throws {
+        try atomicWrite(Data(text.utf8), to: notesURL)
     }
 
     // MARK: - Rendering

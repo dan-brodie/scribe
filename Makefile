@@ -18,11 +18,12 @@ help:
 	@echo "  make phase           show current phase completion status"
 
 build:
-	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug build
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
+		-skipMacroValidation build
 
 test:
 	xcodebuild test -project $(PROJECT) -scheme $(TEST_SCHEME) \
-		-destination 'platform=macOS'
+		-skipMacroValidation -destination 'platform=macOS'
 
 lint:
 	swiftlint lint --strict
