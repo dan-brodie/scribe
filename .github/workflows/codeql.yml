@@ -1,0 +1,61 @@
+name: CodeQL
+
+# CodeQL Swift requires a full build, which compiles MLX's Metal shaders and so
+# needs the Xcode Metal toolchain — an on-demand component that is frequently
+# unavailable on GitHub runners (Apple asset-catalog fetch fails). To avoid a
+# perpetually-red check on every PR over an infra flake, CodeQL runs weekly and
+# on demand rather than per-push. Per-PR enforcement lives in ci.yml (build,
+# tests, license allowlist, gitleaks). Re-add `pull_request` here if the runner
+# images gain a preinstalled Metal toolchain.
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, Monday 06:00 UTC.
+    - cron: '0 6 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze (Swift)
+    runs-on: macos-15
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: swift
+          build-mode: manual
+
+      # The CodeQL build compiles MLX's Metal shaders. The runner usually has the
+      # Metal toolchain already; this best-effort fetch (with retries) covers the
+      # case where it doesn't, and never fails the job on a flaky asset-catalog
+      # fetch — the Build step below is the real gate.
+      - name: Ensure Metal toolchain (best effort)
+        continue-on-error: true
+        run: |
+          for i in 1 2 3; do
+            xcodebuild -downloadComponent MetalToolchain && exit 0
+            echo "Metal toolchain fetch failed (attempt $i); retrying…"
+            sleep 20
+          done
+          echo "Proceeding without an explicit download; toolchain may already be present."
+
+      - name: Build
+        run: |
+          xcodebuild \
+            -project Scribe.xcodeproj -scheme Scribe -configuration Debug \
+            -skipMacroValidation -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:swift"
