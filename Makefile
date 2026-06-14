@@ -1,4 +1,4 @@
-.PHONY: build release install test lint format format-fix download-models download-fixtures check-licenses clean help phase
+.PHONY: build release install dmg test lint format format-fix download-models download-fixtures check-licenses clean help phase
 
 PROJECT     = Scribe.xcodeproj
 SCHEME      = Scribe
@@ -12,6 +12,7 @@ help:
 	@echo "  make build           xcodebuild Scribe scheme (Debug)"
 	@echo "  make release         build a Release Scribe.app into $(DERIVED)/"
 	@echo "  make install         build Release and copy Scribe.app to $(INSTALL_DIR)"
+	@echo "  make dmg             build Release and package a drag-to-Applications DMG in dist/"
 	@echo "  make test            run ScribeTests"
 	@echo "  make lint            swiftlint --strict"
 	@echo "  make format          swift-format lint (check only)"
@@ -37,6 +38,9 @@ install: release
 	rm -rf "$(INSTALL_DIR)/Scribe.app"
 	cp -R "$(APP)" "$(INSTALL_DIR)/Scribe.app"
 	@echo "Installed. Launch from Applications or run: open $(INSTALL_DIR)/Scribe.app"
+
+dmg: release
+	bash Scripts/make-dmg.sh "$(APP)"
 
 test:
 	xcodebuild test -project $(PROJECT) -scheme $(TEST_SCHEME) \

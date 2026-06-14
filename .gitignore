@@ -48,3 +48,6 @@ Models/
 .vscode/
 *.swp
 *~
+
+# DMG packaging output
+dist/
