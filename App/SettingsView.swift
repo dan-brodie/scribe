@@ -71,13 +71,13 @@ struct SettingsView: View {
                 if coordinator.summarizationBackend == .appleFoundationModels
                     && !coordinator.appleFoundationModelsAvailable {
                     Label(
-                        "Apple Intelligence isn't available on this Mac — Scribe will use the downloadable Qwen model instead.",
+                        "Apple Intelligence isn't available on this Mac — Scribe will use the downloadable Gemma model instead.",
                         systemImage: "exclamationmark.triangle"
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 } else {
-                    Text("Apple runs fully on-device with no download. Qwen runs on-device too but downloads a ~2.5 GB model on first use.")
+                    Text("Apple runs fully on-device with no download. Gemma runs on-device too but downloads a ~2.5 GB model on first use.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

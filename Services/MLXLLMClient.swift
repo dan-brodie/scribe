@@ -14,9 +14,9 @@ import Tokenizers
 /// The model is downloaded once on first use and all subsequent inference is
 /// offline. Generation length is throttled under Low Power Mode (spec).
 actor MLXLLMClient: PreparableLLMClient {
-    /// Default model: Qwen3-4B Instruct, 4-bit, Apache-2.0 (CLAUDE.md). MLX
-    /// requires MLX-format weights, hence the `mlx-community` mirror.
-    static let defaultModelID = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+    /// Default model: Gemma 4 E4B Instruct, 4-bit (QAT), Apache-2.0 and ungated
+    /// (CLAUDE.md). MLX requires MLX-format weights, hence the `mlx-community` mirror.
+    static let defaultModelID = "mlx-community/gemma-4-E4B-it-qat-4bit"
 
     enum ClientError: Error, CustomStringConvertible {
         case notLoaded

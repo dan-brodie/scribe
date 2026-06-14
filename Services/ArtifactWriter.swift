@@ -12,7 +12,7 @@ struct ArtifactWriter {
     static let linesName = "transcript-lines.json"
     static let transcriptName = "transcript.txt"
     static let actionsName = "actions.json"
-    static let notesName = "notes.txt"
+    static let notesName = "notes.md"
 
     private var linesURL: URL { meetingDir.appendingPathComponent(Self.linesName) }
     private var transcriptURL: URL { meetingDir.appendingPathComponent(Self.transcriptName) }
@@ -46,7 +46,7 @@ struct ArtifactWriter {
         try atomicWrite(try encoder.encode(actions), to: actionsURL)
     }
 
-    /// Write the human-facing `notes.txt` (summary + decisions + actions).
+    /// Write the human-facing `notes.md` (summary + decisions + actions).
     func writeNotes(_ text: String) throws {
         try atomicWrite(Data(text.utf8), to: notesURL)
     }

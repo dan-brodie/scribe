@@ -7,7 +7,7 @@ import Foundation
 ///
 /// ```
 /// <output folder>/<YYYY-MM-DD> <title>/
-///   notes.txt
+///   notes.md
 ///   transcript.txt
 ///   transcript.json
 ///   actions.json
@@ -35,7 +35,7 @@ struct FileExporter {
     /// export dir). `transcript-lines.json` is the structured re-render source;
     /// it surfaces to the user as `transcript.json`.
     private static let artifacts: [(source: String, destination: String)] = [
-        (ArtifactWriter.notesName, "notes.txt"),
+        (ArtifactWriter.notesName, "notes.md"),
         (ArtifactWriter.transcriptName, "transcript.txt"),
         (ArtifactWriter.linesName, "transcript.json"),
         (ArtifactWriter.actionsName, "actions.json"),

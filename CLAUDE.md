@@ -18,7 +18,7 @@ to a configurable local folder. No cloud, no accounts beyond what macOS already 
 | System audio | Core Audio process taps | built-in | macOS 14.4+ |
 | UI | SwiftUI `MenuBarExtra` | built-in | macOS 14.4+ |
 
-Default LLM: `Qwen/Qwen3-4B-Instruct` 4-bit (Apache-2.0). Alt: `meta-llama/Llama-3.2-3B-Instruct` 4-bit.
+Default LLM: `google/gemma-4-E4B-it` 4-bit via `mlx-community/gemma-4-E4B-it-qat-4bit` (Apache-2.0, ungated). Lighter alt: Gemma 4 `E2B` 4-bit.
 
 ---
 
@@ -28,7 +28,7 @@ Default LLM: `Qwen/Qwen3-4B-Instruct` 4-bit (Apache-2.0). Alt: `meta-llama/Llama
 |---|----------|--------|-----------|
 | 1 | Inference backend | FluidAudio (audio), MLX (LLM) | mlx-whisper/pyannote are Python; FluidAudio is pure Swift/ANE |
 | 2 | System audio | Core Audio process tap (`CATapDescription`) | Audio-only TCC on 14.4+; avoids ScreenCaptureKit's screen-recording prompt |
-| 3 | Output format | Plain text + JSON files | No public Notes API; files are greppable, syncable, zero extra permissions |
+| 3 | Output format | Markdown + JSON files | No public Notes API; files are greppable, syncable, zero extra permissions |
 | 4 | Calendar source | EventKit (local Google sync) | No OAuth if Google account is in macOS Internet Accounts |
 | 5 | Speaker naming | Heuristic pipeline (channel prior + LLM cues + enrollment) | Never ground truth — confidence-scored, always user-correctable |
 | 6 | Sharing | `mailto:` draft via `NSSharingService` | User always presses Send; no silent transmission |
@@ -95,7 +95,7 @@ make build           # xcodebuild Scribe scheme
 make test            # run ScribeTests
 make lint            # swiftlint --strict
 make format-fix      # swift-format in-place
-make download-models # fetch Qwen3-4B + Parakeet to ~/.cache/scribe-models/
+make download-models # fetch Gemma 4 E4B + Parakeet to ~/.cache/scribe-models/
 make check-licenses  # fail on non-allowlisted dependency licenses
 make clean           # remove .build/ and DerivedData/
 ```

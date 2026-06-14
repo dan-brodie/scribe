@@ -26,8 +26,8 @@
 
 | Model | HF Repo | License | Size (4-bit) |
 |-------|---------|---------|--------------|
-| Qwen3-4B-Instruct (default) | `Qwen/Qwen3-4B-Instruct` | Apache-2.0 | ~2.5 GB |
-| Llama-3.2-3B-Instruct (alt) | `meta-llama/Llama-3.2-3B-Instruct` | Llama 3.2 (permissive) | ~2 GB |
+| Gemma 4 E4B-it (default) | `mlx-community/gemma-4-E4B-it-qat-4bit` | Apache-2.0 (ungated) | ~2.5 GB |
+| Gemma 4 E2B-it (alt) | `mlx-community/gemma-4-E2B-it-qat-4bit` | Apache-2.0 (ungated) | ~0.84 GB |
 
 ## Actual Integration (validated June 2026 — `Services/MLXLLMClient.swift`)
 
@@ -45,7 +45,7 @@ import Tokenizers     // AutoTokenizer — required for the macro expansion
 import MLXHuggingFace
 
 let container = try await #huggingFaceLoadModelContainer(
-    configuration: ModelConfiguration(id: "mlx-community/Qwen3-4B-Instruct-2507-4bit")
+    configuration: ModelConfiguration(id: "mlx-community/gemma-4-E4B-it-qat-4bit")
 ) { progress in /* progress.fractionCompleted */ }
 
 let session = ChatSession(container, generateParameters: params) // params.maxTokens, .temperature
@@ -62,7 +62,7 @@ import MLXLLM
 import MLXLMCommon
 
 // 1. Load model (async, downloads on first run)
-let modelConfig = ModelConfiguration(id: "Qwen/Qwen3-4B-Instruct")
+let modelConfig = ModelConfiguration(id: "mlx-community/gemma-4-E4B-it-qat-4bit")
 let container = try await LLMModelFactory.shared.loadContainer(configuration: modelConfig)
 
 // 2. Generate text
@@ -116,6 +116,6 @@ if let data = raw.data(using: .utf8),
 
 ## Performance Notes
 
-- Peak memory for Qwen3-4B 4-bit: ~3–4 GB; hard cap target <6 GB including ASR models
+- Peak memory for Gemma 4 E4B 4-bit: ~3–4 GB; hard cap target <6 GB including ASR models
 - Throttle `maxTokens` and batch size on low-power mode (`ProcessInfo.processInfo.isLowPowerModeEnabled`)
 - Model download is one-time; all subsequent inference is offline

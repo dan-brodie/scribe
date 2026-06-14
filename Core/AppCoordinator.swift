@@ -105,7 +105,7 @@ final class AppCoordinator {
     let speakerNamer = SpeakerNamer()
     let voiceStore: VoiceEnrollmentStore
 
-    /// Summarization backend. Apple's on-device model by default; the MLX/Qwen
+    /// Summarization backend. Apple's on-device model by default; the MLX/Gemma
     /// path stays available behind this flag.
     var summarizationBackend: SummarizationBackend = .configured {
         didSet { SummarizationBackend.store(summarizationBackend) }
@@ -463,7 +463,7 @@ final class AppCoordinator {
     // MARK: - Summarization
 
     /// Summarize the diarized transcript (ADR-001), write `actions.json` and
-    /// `notes.txt`, persist action rows, and advance `diarized → summarized`.
+    /// `notes.md`, persist action rows, and advance `diarized → summarized`.
     /// On a JSON-degrade the meeting still advances with a recorded note.
     private func summarizeMeeting(meetingID: Int64, eventID: String) async {
         processingMessage = "Summarizing…"
@@ -588,7 +588,7 @@ final class AppCoordinator {
     func shareNotes(meetingID: Int64) async {
         guard let meeting = try? await database.meeting(id: meetingID), let path = meeting.exportPath else { return }
         let dir = URL(fileURLWithPath: path)
-        let body = (try? String(contentsOf: dir.appendingPathComponent("notes.txt"), encoding: .utf8)) ?? ""
+        let body = (try? String(contentsOf: dir.appendingPathComponent(ArtifactWriter.notesName), encoding: .utf8)) ?? ""
         let attendees = (try? await database.attendees(forMeeting: meetingID)) ?? []
         let emails = attendees.compactMap { $0.role == "self" ? nil : $0.email }
         let draft = Sharer.makeDraft(

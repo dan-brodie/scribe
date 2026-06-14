@@ -20,14 +20,14 @@ final class SummarizationBackendTests: XCTestCase {
     }
 
     func testFlagRoundTripsThroughUserDefaults() {
-        SummarizationBackend.store(.mlxQwen)
-        XCTAssertEqual(SummarizationBackend.configured, .mlxQwen)
+        SummarizationBackend.store(.mlxGemma)
+        XCTAssertEqual(SummarizationBackend.configured, .mlxGemma)
         SummarizationBackend.store(.appleFoundationModels)
         XCTAssertEqual(SummarizationBackend.configured, .appleFoundationModels)
     }
 
     func testMLXFlagSelectsMLXClient() {
-        let client = SummarizerClientFactory.makeClient(backend: .mlxQwen)
+        let client = SummarizerClientFactory.makeClient(backend: .mlxGemma)
         XCTAssertTrue(client is MLXLLMClient)
     }
 

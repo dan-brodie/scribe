@@ -6,7 +6,7 @@ import FoundationModels
 
 /// On-device summarization via Apple's Foundation Models (Apple Intelligence) —
 /// the OS-native, zero-download default (ADR-001 alternative). No `swift-huggingface`
-/// or model fetch: the weights ship with the OS. The MLX/Qwen path
+/// or model fetch: the weights ship with the OS. The MLX/Gemma path
 /// (`MLXLLMClient`) is retained behind a feature flag for older OS / unsupported
 /// hardware.
 ///
