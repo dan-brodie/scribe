@@ -30,10 +30,19 @@ jobs:
           languages: swift
           build-mode: manual
 
-      # Xcode 16+/26 ships the Metal toolchain as a downloadable component; the
-      # full CodeQL build compiles MLX's Metal shaders, which needs it present.
-      - name: Download Metal toolchain
-        run: xcodebuild -downloadComponent MetalToolchain
+      # The CodeQL build compiles MLX's Metal shaders. The runner usually has the
+      # Metal toolchain already; this best-effort fetch (with retries) covers the
+      # case where it doesn't, and never fails the job on a flaky asset-catalog
+      # fetch — the Build step below is the real gate.
+      - name: Ensure Metal toolchain (best effort)
+        continue-on-error: true
+        run: |
+          for i in 1 2 3; do
+            xcodebuild -downloadComponent MetalToolchain && exit 0
+            echo "Metal toolchain fetch failed (attempt $i); retrying…"
+            sleep 20
+          done
+          echo "Proceeding without an explicit download; toolchain may already be present."
 
       - name: Build
         run: |
