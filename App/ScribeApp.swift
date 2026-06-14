@@ -42,9 +42,19 @@ private struct MenuBarLabel: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Image(systemName: coordinator.status.symbolName)
-            .accessibilityLabel("Scribe — \(coordinator.status.label)")
-            .task {
+        Group {
+            if let countdown = coordinator.menuBarCountdown {
+                // Icon + next-meeting countdown (7c), e.g. "Standup · 12 min".
+                HStack(spacing: 4) {
+                    Image(systemName: coordinator.status.symbolName)
+                    Text(countdown)
+                }
+            } else {
+                Image(systemName: coordinator.status.symbolName)
+            }
+        }
+        .accessibilityLabel(menuBarAccessibilityLabel)
+        .task {
                 await coordinator.start()
                 if coordinator.needsOnboarding {
                     openWindow(id: "onboarding")
@@ -53,5 +63,12 @@ private struct MenuBarLabel: View {
                     NSApp.activate(ignoringOtherApps: true)
                 }
             }
+    }
+
+    private var menuBarAccessibilityLabel: String {
+        if let countdown = coordinator.menuBarCountdown {
+            return "Scribe — next meeting \(countdown)"
+        }
+        return "Scribe — \(coordinator.status.label)"
     }
 }

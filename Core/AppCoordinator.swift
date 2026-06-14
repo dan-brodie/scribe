@@ -56,6 +56,48 @@ final class AppCoordinator {
         upcomingMeetings.first { !$0.optedOut }
     }
 
+    /// Current time, ticked once a minute by `startCountdownTicker()` so the
+    /// menu-bar countdown (7c) and relative-time labels stay live.
+    private(set) var now: Date = Date()
+
+    /// Only surface the menu-bar countdown when the next meeting starts within
+    /// this window; beyond it the menu bar shows just the icon.
+    nonisolated private static let menuBarLookAhead: TimeInterval = 60 * 60
+
+    /// Short menu-bar text for the next upcoming meeting, e.g. "Standup · 12 min"
+    /// or "Standup · now". `nil` when there's no meeting within the look-ahead
+    /// window or while a recording is in progress (the icon covers that case).
+    var menuBarCountdown: String? {
+        guard !isRecording else { return nil }
+        return Self.menuBarCountdownText(for: nextMeeting, now: now)
+    }
+
+    /// Pure formatting for the menu-bar countdown, factored out for testing.
+    /// Returns `nil` when there's no meeting, it has ended, or it starts beyond
+    /// the look-ahead window.
+    nonisolated static func menuBarCountdownText(
+        for meeting: UpcomingMeeting?,
+        now: Date,
+        lookAhead: TimeInterval = AppCoordinator.menuBarLookAhead
+    ) -> String? {
+        guard let meeting, meeting.end > now else { return nil }
+        let interval = meeting.start.timeIntervalSince(now)
+        guard interval <= lookAhead else { return nil }
+        let minutes = max(0, Int((interval / 60).rounded(.up)))
+        let when: String
+        switch minutes {
+        case 0: when = "now"
+        case 1: when = "1 min"
+        default: when = "\(minutes) min"
+        }
+        return "\(menuBarTitle(meeting.title)) · \(when)"
+    }
+
+    /// Truncate a meeting title so the menu bar doesn't grow unbounded.
+    nonisolated private static func menuBarTitle(_ title: String, max: Int = 22) -> String {
+        title.count <= max ? title : String(title.prefix(max - 1)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+
     /// Whether a capture session is currently active.
     private(set) var isRecording = false
     /// Whether meetings should auto-record at their start time.
@@ -120,6 +162,7 @@ final class AppCoordinator {
     private let logger = Log.make("AppCoordinator")
     private var demoTask: Task<Void, Never>?
     private var calendarPollTask: Task<Void, Never>?
+    private var countdownTask: Task<Void, Never>?
     private var calendarChangeObserver: NSObjectProtocol?
     private var autoStartTask: Task<Void, Never>?
     private var captureConfigured = false
@@ -174,6 +217,21 @@ final class AppCoordinator {
         await requestNotificationPermission()
         await configureCaptureHandlers()
         await startCalendarMonitoringIfAuthorized()
+        startCountdownTicker()
+    }
+
+    /// Tick `now` at each minute boundary so the menu-bar countdown (7c) updates
+    /// without busy-waiting. Aligns to the next whole minute, then every 60 s.
+    private func startCountdownTicker() {
+        guard countdownTask == nil else { return }
+        countdownTask = Task { [weak self] in
+            while !Task.isCancelled {
+                let secondsToNextMinute = 60 - (Calendar.current.component(.second, from: Date()))
+                try? await Task.sleep(for: .seconds(secondsToNextMinute))
+                guard !Task.isCancelled else { break }
+                self?.now = Date()
+            }
+        }
     }
 
     private func configureCaptureHandlers() async {
