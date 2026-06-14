@@ -1,12 +1,16 @@
 name: CodeQL
 
+# CodeQL Swift requires a full build, which compiles MLX's Metal shaders and so
+# needs the Xcode Metal toolchain — an on-demand component that is frequently
+# unavailable on GitHub runners (Apple asset-catalog fetch fails). To avoid a
+# perpetually-red check on every PR over an infra flake, CodeQL runs weekly and
+# on demand rather than per-push. Per-PR enforcement lives in ci.yml (build,
+# tests, license allowlist, gitleaks). Re-add `pull_request` here if the runner
+# images gain a preinstalled Metal toolchain.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
   schedule:
-    # Weekly, Monday 06:00 UTC — catches advisories in code that hasn't changed.
+    # Weekly, Monday 06:00 UTC.
     - cron: '0 6 * * 1'
 
 jobs:
