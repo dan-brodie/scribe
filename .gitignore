@@ -36,7 +36,6 @@ DerivedData/
 *.mlmodelc
 *.gguf
 *.safetensors
-Models/
 
 # Credentials
 .env
