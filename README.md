@@ -17,7 +17,7 @@ See [`CLAUDE.md`](CLAUDE.md) for architecture, ADRs, and the phase backlog.
 ## Build & Install
 
 ```bash
-# 1. Fetch the on-device models (Qwen3-4B + Parakeet) — first run only, several GB
+# 1. Fetch the on-device models (Gemma 4 E4B + Parakeet) — first run only, several GB
 make download-models
 
 # 2. Build a Release app and copy it to /Applications

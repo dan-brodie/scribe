@@ -8,7 +8,7 @@ Write meeting notes to the output folder atomically, enable share-via-email draf
 
 ## Acceptance Criteria
 
-- [ ] `FileExporter` writes to `<output folder>/<YYYY-MM-DD> <title>/`: `notes.txt`, `transcript.txt`, `transcript.json`, `actions.json`
+- [ ] `FileExporter` writes to `<output folder>/<YYYY-MM-DD> <title>/`: `notes.md`, `transcript.txt`, `transcript.json`, `actions.json`
 - [ ] Output folder is user-configurable in Settings (default `~/Documents/Meeting Notes/`); security-scoped bookmark stored if sandboxed
 - [ ] Filenames sanitized (no `/`, `:`); collisions suffixed with ` (2)`, ` (3)`, etc.
 - [ ] Speaker-name corrections (from Review popover) rewrite files atomically: write-to-temp, then rename
@@ -22,7 +22,7 @@ Write meeting notes to the output folder atomically, enable share-via-email draf
 - [ ] `Scripts/check-licenses.sh` passes: all dependencies are MIT/Apache-2.0/BSD-class
 - [ ] License check wired into `make check-licenses`; fails CI on unknown licenses
 - [ ] State machine advances: `summarized → exported`
-- [ ] End-to-end test with networking disabled after model download: calendar event → auto recording → `notes.txt` + `transcript.txt` in output folder → draft email to attendees
+- [ ] End-to-end test with networking disabled after model download: calendar event → auto recording → `notes.md` + `transcript.txt` in output folder → draft email to attendees
 
 ## Key Files to Create
 

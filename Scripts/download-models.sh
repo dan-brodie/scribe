@@ -54,13 +54,13 @@ echo "LLM weights only."
 echo ""
 
 # ---------------------------------------------------------------------------
-# Qwen3-4B-Instruct 4-bit (default LLM)
-# Update checksums from: https://huggingface.co/Qwen/Qwen3-4B-Instruct/tree/main
+# Gemma 4 E4B Instruct 4-bit (default LLM) — Apache-2.0, ungated
+# Update checksums from: https://huggingface.co/mlx-community/gemma-4-E4B-it-qat-4bit/tree/main
 # ---------------------------------------------------------------------------
-QWEN_DIR="${CACHE_DIR}/Qwen3-4B-Instruct-4bit"
-mkdir -p "${QWEN_DIR}"
+GEMMA_DIR="${CACHE_DIR}/gemma-4-E4B-it-qat-4bit"
+mkdir -p "${GEMMA_DIR}"
 
-echo "Downloading Qwen3-4B-Instruct (4-bit)..."
+echo "Downloading Gemma 4 E4B Instruct (4-bit)..."
 echo "  Note: Update checksums in this script after verifying from HuggingFace."
 echo "  Skipping automatic download — run the app to trigger MLX model download."
 

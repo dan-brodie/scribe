@@ -95,7 +95,7 @@ enum OwnerConstraint {
     }
 }
 
-/// Renders the human-facing `notes.txt`.
+/// Renders the human-facing `notes.md` (Markdown).
 enum NotesRenderer {
     static func render(_ summary: MeetingSummary, date: Date? = nil, dateString: String? = nil) -> String {
         var lines: [String] = []

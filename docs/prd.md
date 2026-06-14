@@ -33,7 +33,7 @@ These decisions correct or refine the original brief. Do not silently deviate fr
 **Decision:**
 
 - **ASR + VAD + diarization + speaker embeddings:** FluidAudio (CoreML/ANE).
-- **Summarization + action-item extraction + speaker-name inference:** MLX via `mlx-swift` + `mlx-swift-lm` (`MLXLLM` / `MLXLMCommon` products), running a small open-weight instruct model, default **Qwen3-4B-Instruct 4-bit** (Apache 2.0), with **Llama-3.2-3B-Instruct 4-bit** as an alternative the user can select.
+- **Summarization + action-item extraction + speaker-name inference:** MLX via `mlx-swift` + `mlx-swift-lm` (`MLXLLM` / `MLXLMCommon` products), running a small open-weight instruct model, default **Gemma 4 E4B Instruct 4-bit** (`mlx-community/gemma-4-E4B-it-qat-4bit`, Apache 2.0, ungated), with **Gemma 4 E2B 4-bit** as a lighter alternative the user can select.
 - All model downloads happen once, from Hugging Face, with checksums; everything after that is offline.
 
 **Consequence:** The MLX requirement is satisfied where MLX is genuinely the right tool (LLM workloads); audio models run on ANE where they are faster and cheaper. If the user insists on MLX-only end to end, the fallback is a Python sidecar (`mlx-whisper` + a non-gated diarizer) — documented as out of scope for v1.
@@ -54,7 +54,7 @@ There is no trivial “record system speaker” API. Options:
 
 ### ADR-3: Output — plain text files (Apple Notes deferred)
 
-**Decision (v1.1):** Output is written as plain files to a user-configurable folder (default `~/Documents/Meeting Notes/<YYYY-MM-DD> <title>/`): `notes.txt` (summary + decisions + actions + attendees), `transcript.txt` (speaker-labelled, timestamped), plus machine-readable `transcript.json` and `actions.json`. Files are the canonical store — simple, greppable, syncable, and zero automation permissions.
+**Decision (v1.1):** Output is written as plain files to a user-configurable folder (default `~/Documents/Meeting Notes/<YYYY-MM-DD> <title>/`): `notes.md` (summary + decisions + actions + attendees), `transcript.txt` (speaker-labelled, timestamped), plus machine-readable `transcript.json` and `actions.json`. Files are the canonical store — simple, greppable, syncable, and zero automation permissions.
 
 **Why Apple Notes was dropped from v1:** Notes has no public API; the only write path is AppleScript/Apple Events, which requires the `com.apple.security.automation.apple-events` entitlement, a “control Notes” consent prompt, blocks Mac App Store sandboxing, and is brittle across macOS releases. It remains a clean Phase-7 add-on because the exporter would only project the already-canonical local files into a note.
 
@@ -109,7 +109,7 @@ Apple Notes collaboration (iCloud share links) cannot be automated via AppleScri
 1. First launch → onboarding popover walks through 3 permission grants (Calendar, Microphone, System Audio Recording) + Notes automation prompt on first export + model download (~2–3 GB, progress shown).
 1. 9:58 — menu bar icon shows “Standup in 2 min”. 10:00 — icon turns red (recording), notification: “Recording Standup — click to stop.” (Auto-start is configurable: auto / ask / manual.)
 1. 10:30 — meeting ends (calendar end + 2 min grace, or 90 s of sustained silence, or manual stop). Icon shows “Processing…”.
-1. ~1–3 min later — notification: “Notes ready: Standup” (clicking reveals the folder in Finder). `notes.txt` and `transcript.txt` land in the output folder. Menu shows a review item to fix speaker names and a “Share with attendees…” button that opens a draft email.
+1. ~1–3 min later — notification: “Notes ready: Standup” (clicking reveals the folder in Finder). `notes.md` and `transcript.txt` land in the output folder. Menu shows a review item to fix speaker names and a “Share with attendees…” button that opens a draft email.
 
 -----
 
@@ -162,7 +162,7 @@ Priority: **P0** = must ship in v1, **P1** = should, **P2** = stretch.
 
 ### 5.7 Output files
 
-- **FR-27 (P0):** On pipeline completion, write to `<output folder>/<YYYY-MM-DD> <title>/`: `notes.txt` (Attendees, Summary, Decisions, Action Items), `transcript.txt` (speaker-labelled, timestamped segments), `transcript.json`, `actions.json`. Filenames sanitized; collisions suffixed.
+- **FR-27 (P0):** On pipeline completion, write to `<output folder>/<YYYY-MM-DD> <title>/`: `notes.md` (Attendees, Summary, Decisions, Action Items), `transcript.txt` (speaker-labelled, timestamped segments), `transcript.json`, `actions.json`. Filenames sanitized; collisions suffixed.
 - **FR-28 (P0):** Output folder is user-configurable (default `~/Documents/Meeting Notes/`), with security-scoped bookmark if sandboxed. “Reveal in Finder” from the notification and from each meeting’s menu entry.
 - **FR-29 (P0):** Speaker-name corrections (FR-21) rewrite the files in place, atomically (write-temp-then-rename).
 
@@ -183,7 +183,7 @@ Priority: **P0** = must ship in v1, **P1** = should, **P2** = stretch.
 
 - **Privacy/network:** outbound network is permitted **only** to Hugging Face for model downloads (and Google, only if the optional Phase-7 API connector is enabled). Enforce by code review + an integration test that runs a full pipeline with networking blocked. No telemetry, no crash reporting by default.
 - **Consent:** recording calls without consent is illegal in many jurisdictions (two-party consent states, etc.). On first run show a clear notice that the user is responsible for obtaining consent; provide the “ask before recording” mode as default. This is a product requirement, not legal advice.
-- **Licensing:** app under MIT. Dependency budget: FluidAudio (Apache-2.0), mlx-swift / mlx-swift-lm (MIT), Qwen3 weights (Apache-2.0), Parakeet CoreML conversions (permissive per FluidAudio), GRDB (MIT). CI check (`licenses.json`) fails the build if a dependency lacks an allow-listed license. **Do not** use gated pyannote checkpoints directly.
+- **Licensing:** app under MIT. Dependency budget: FluidAudio (Apache-2.0), mlx-swift / mlx-swift-lm (MIT), Gemma 4 weights (Apache-2.0, ungated), Parakeet CoreML conversions (permissive per FluidAudio), GRDB (MIT). CI check (`licenses.json`) fails the build if a dependency lacks an allow-listed license. **Do not** use gated pyannote checkpoints directly.
 - **Performance:** idle <150 MB RAM / ~0% CPU; recording <300 MB; processing peak <6 GB (4-bit 4B LLM + ASR) and must complete a 60-min meeting in <10 min on M1/16 GB; thermals: prefer ANE, throttle LLM batch size on low-power mode.
 - **Reliability:** crash-safe audio (FR-11); the pipeline is a resumable state machine (RECORDED → TRANSCRIBED → DIARIZED → SUMMARIZED → EXPORTED) persisted in SQLite — relaunching the app resumes incomplete stages.
 - **Concurrency:** Swift structured concurrency; one processing job at a time (queue back-to-back meetings); recording of meeting N+1 may start while N is processing.
@@ -201,15 +201,15 @@ Priority: **P0** = must ship in v1, **P1** = should, **P2** = stretch.
 │   │        │            │              │                │               │              │         │
 │   ▼        ▼            ▼              ▼                ▼               ▼              ▼         │
 │ Calendar  Capture     ASR Engine    Diarizer        Summarizer      FileExporter   Sharer      │
-│ Service   Service     (FluidAudio   (FluidAudio     (MLXLLM,        (txt/json to    (mailto/    │
-│ (EventKit)(AVAudio-    Parakeet)     diar+embed)     Qwen3-4B q4)    output folder)  NSSharing) │
+│ Service   Service     (FluidAudio   (FluidAudio     (MLXLLM,        (md/json to     (mailto/    │
+│ (EventKit)(AVAudio-    Parakeet)     diar+embed)     Gemma 4 E4B)    output folder)  NSSharing) │
 │           Engine +                                                                              │
 │           CA process                                                                            │
 │           tap)                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 Data flow: CalendarService → (meeting window) → CaptureService → mic.caf + system.caf
  → ASREngine → segments.json → Diarizer → speakers.json → SpeakerNamer (cues+embeddings+LLM)
- → Summarizer → notes.txt + actions.json → FileExporter → output folder → Sharer (on demand)
+ → Summarizer → notes.md + actions.json → FileExporter → output folder → Sharer (on demand)
 ```
 
 **Data model (SQLite):** `meetings(id, eventID, title, start, end, state, exportPath, error)`, `attendees(meetingID, name, email, role, rsvp)`, `speakers(meetingID, label, assignedAttendee, confidence, provenance)`, `actions(meetingID, owner, task, due, done)`, `voiceProfiles(personEmail, name, embeddingBlob, sampleCount)`.
@@ -263,7 +263,7 @@ Scribe/
 ### Phase 6 — File export, sharing, onboarding, polish
 
 - File exporter (atomic writes, sanitized names, configurable folder, reveal-in-Finder); share-via-email draft with attachments; onboarding wizard checking every permission with deep links to System Settings; consent notice; settings completeness; notarization script; license-check script wired into build.
-- **Accept:** end-to-end: calendar event → auto recording → notes.txt + transcript.txt in the output folder → draft email to attendees, with networking disabled after model download.
+- **Accept:** end-to-end: calendar event → auto recording → notes.md + transcript.txt in the output folder → draft email to attendees, with networking disabled after model download.
 
 ### Phase 7 (stretch) — Apple Notes export (AppleScript, projects the canonical files into a note), Google Calendar API connector, PDF export, live caption window, menu-bar mini transcript.
 

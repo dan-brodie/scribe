@@ -1,4 +1,4 @@
-# ADR-003: Output Format — Plain Text Files (Apple Notes Deferred)
+# ADR-003: Output Format — Markdown + JSON Files (Apple Notes Deferred)
 
 ## Status
 Accepted (v1.1 — Notes dropped from v1.0)
@@ -11,8 +11,8 @@ Original brief included Apple Notes export. Notes has no public API; the only wr
 - Brittle across macOS releases
 
 ## Decision
-Output is written as plain files to a user-configurable folder (default `~/Documents/Meeting Notes/<YYYY-MM-DD> <title>/`):
-- `notes.txt` — summary + decisions + actions + attendees
+Output is written as files to a user-configurable folder (default `~/Documents/Meeting Notes/<YYYY-MM-DD> <title>/`):
+- `notes.md` — Markdown: summary + decisions + actions + attendees
 - `transcript.txt` — speaker-labelled, timestamped segments
 - `transcript.json` — machine-readable transcript
 - `actions.json` — structured action items `{owner?, task, due?, sourceQuote}`

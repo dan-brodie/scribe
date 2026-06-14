@@ -14,8 +14,8 @@ The brief asked for MLX as the backend for all AI workloads. However:
   - Models: NVIDIA Parakeet TDT (auto-download from Hugging Face, permissive licenses)
   - Runs on Apple Neural Engine — lower power draw for an always-on menu bar app
 - **Summarization + action extraction + speaker-name inference:** MLX via `mlx-swift` + `mlx-swift-lm`
-  - Default model: `Qwen/Qwen3-4B-Instruct` 4-bit (Apache-2.0)
-  - Alternative: `meta-llama/Llama-3.2-3B-Instruct` 4-bit
+  - Default model: Gemma 4 E4B Instruct 4-bit — `mlx-community/gemma-4-E4B-it-qat-4bit` (Apache-2.0, ungated)
+  - Lighter alternative: Gemma 4 E2B Instruct 4-bit (for low-RAM machines)
 
 ## Consequences
 - MLX constraint is satisfied where MLX is genuinely right (LLM workloads)

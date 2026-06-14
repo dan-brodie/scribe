@@ -67,7 +67,7 @@ final class FileExporterTests: XCTestCase {
         let dir = try exporter.export(title: "Standup", date: date("2026-06-13T09:00:00Z"), workingDir: workingDir)
 
         XCTAssertEqual(dir.lastPathComponent, "2026-06-13 Standup")
-        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("notes.txt"), encoding: .utf8), "the notes")
+        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("notes.md"), encoding: .utf8), "the notes")
         XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("transcript.txt"), encoding: .utf8), "the transcript")
         // transcript-lines.json surfaces to the user as transcript.json.
         XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("transcript.json"), encoding: .utf8), "[1]")
@@ -109,7 +109,7 @@ final class FileExporterTests: XCTestCase {
         let again = try exporter.export(title: "Sync", date: day, workingDir: workingDir, existingExportDir: first)
 
         XCTAssertEqual(first, again)
-        XCTAssertEqual(try String(contentsOf: again.appendingPathComponent("notes.txt"), encoding: .utf8), "v2 corrected")
+        XCTAssertEqual(try String(contentsOf: again.appendingPathComponent("notes.md"), encoding: .utf8), "v2 corrected")
         // No suffixed sibling was created.
         let outRoot = root.appendingPathComponent("out", isDirectory: true)
         let entries = try FileManager.default.contentsOfDirectory(atPath: outRoot.path)

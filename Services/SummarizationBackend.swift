@@ -3,19 +3,19 @@
 import Foundation
 
 /// Which LLM powers summarization. Apple's on-device Foundation Models is the
-/// default (OS-native, no download); the MLX/Qwen path is kept behind a feature
+/// default (OS-native, no download); the MLX/Gemma path is kept behind a feature
 /// flag as a fallback for pre-macOS-26 / non-Apple-Intelligence machines and for
 /// users who prefer it.
 enum SummarizationBackend: String, CaseIterable, Identifiable, Sendable {
     case appleFoundationModels
-    case mlxQwen
+    case mlxGemma
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
         case .appleFoundationModels: return "Apple (on-device)"
-        case .mlxQwen: return "Qwen via MLX (download)"
+        case .mlxGemma: return "Gemma 4 E4B via MLX (download)"
         }
     }
 
@@ -35,7 +35,7 @@ enum SummarizationBackend: String, CaseIterable, Identifiable, Sendable {
 }
 
 /// Builds the `LLMClient` for the configured backend, transparently falling back
-/// to MLX/Qwen when Apple Foundation Models isn't available on this OS/hardware.
+/// to MLX/Gemma when Apple Foundation Models isn't available on this OS/hardware.
 enum SummarizerClientFactory {
     static func makeClient(backend: SummarizationBackend = .configured) -> LLMClient {
         switch backend {
@@ -46,9 +46,9 @@ enum SummarizerClientFactory {
             }
             #endif
             Log.make("SummarizerClientFactory")
-                .info("Apple Foundation Models unavailable; using MLX/Qwen fallback")
+                .info("Apple Foundation Models unavailable; using MLX/Gemma fallback")
             return MLXLLMClient()
-        case .mlxQwen:
+        case .mlxGemma:
             return MLXLLMClient()
         }
     }
