@@ -593,7 +593,7 @@ final class AppCoordinator {
             lastExportedMeetingID = meetingID
             lastExportURL = dir
             notifyExported(title: meeting.title, dir: dir)
-            logger.info("exported \(eventID, privacy: .public) → \(dir.lastPathComponent, privacy: .public)")
+            logger.info("exported \(eventID, privacy: .public) → \(dir.lastPathComponent, privacy: .private)")
         } catch {
             logger.error("export failed for \(eventID, privacy: .public): \(error, privacy: .public)")
             try? await database.setError(meetingID: meetingID, message: String(describing: error))
@@ -864,7 +864,7 @@ final class AppCoordinator {
                let name = nameForEmail[email] {
                 await voiceStore.enroll(email: email, name: name, embedding: embedding)
             }
-            logger.info("reassigned speaker \(speakerID, privacy: .public) → \(toEmail ?? "unassigned", privacy: .public)")
+            logger.info("reassigned speaker \(speakerID, privacy: .public) → \(toEmail ?? "unassigned", privacy: .private)")
         } catch {
             logger.error("reassign failed: \(error, privacy: .public)")
         }

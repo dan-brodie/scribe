@@ -44,6 +44,13 @@ rm -f "${DMG_FINAL}" "${DMG_TMP}"
 cp -R "${APP_PATH}" "${STAGE_DIR}/${APP_NAME}.app"
 ln -s /Applications "${STAGE_DIR}/Applications"
 
+# Ship the license notices alongside the app to satisfy the MIT/Apache/BSD
+# attribution requirements of bundled dependencies.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+[[ -f "${REPO_ROOT}/LICENSE" ]] && cp "${REPO_ROOT}/LICENSE" "${STAGE_DIR}/LICENSE.txt"
+[[ -f "${REPO_ROOT}/THIRD-PARTY-LICENSES.md" ]] && \
+    cp "${REPO_ROOT}/THIRD-PARTY-LICENSES.md" "${STAGE_DIR}/THIRD-PARTY-LICENSES.md"
+
 # Create a writable DMG we can style, sized to the staged content + headroom.
 SIZE_KB=$(du -sk "${STAGE_DIR}" | awk '{print $1}')
 SIZE_MB=$(( SIZE_KB / 1024 + 64 ))

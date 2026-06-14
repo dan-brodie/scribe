@@ -1,0 +1,15 @@
+# gitleaks configuration for Scribe.
+# Extends the built-in ruleset; only adds path/allowlist tuning for this repo.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Generated, vendored, and fixture paths that never contain real secrets."
+paths = [
+  '''build/''',
+  '''dist/''',
+  '''\.build/''',
+  '''DerivedData/''',
+  '''THIRD-PARTY-LICENSES\.md''',
+  '''Tests/Fixtures/''',
+]

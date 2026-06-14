@@ -70,7 +70,7 @@ actor VoiceEnrollmentStore {
         guard isEnabled, !embedding.isEmpty else { return }
         do {
             try await database.upsertVoiceProfile(email: email, name: name, embedding: embedding)
-            logger.info("enrolled voice for \(email, privacy: .public)")
+            logger.info("enrolled voice for \(email, privacy: .private)")
         } catch {
             logger.error("voice enrollment failed: \(error, privacy: .public)")
         }
