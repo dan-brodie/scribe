@@ -77,6 +77,10 @@ struct MenuBarView: View {
             Button("Discard Recording") {
                 Task { await coordinator.discardRecording() }
             }
+        } else if coordinator.microphoneAccessDenied {
+            Button("Enable Microphone Access…") {
+                coordinator.openMicrophoneSettings()
+            }
         } else {
             Button("Record Now") {
                 Task { await coordinator.recordNow() }
