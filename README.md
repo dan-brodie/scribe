@@ -1,5 +1,12 @@
 # Scribe
 
+> [!NOTE]
+> **Scribe isn't notarized.** It's ad-hoc signed because I'm too tight to pay Apple's $99/yr
+> developer fee. macOS therefore identifies the app by its build hash, so a microphone/calendar
+> permission you grant can stop sticking after an update, and Gatekeeper flags the first launch.
+> The Homebrew cask works around this by clearing the download quarantine on install. If recording
+> ever goes silent, re-grant access in **System Settings › Privacy & Security › Microphone**.
+
 A macOS menu bar app that automatically records your mic + system audio during Google
 Calendar meetings, then transcribes, diarizes, and summarizes them **entirely on-device**
 (Apple Silicon). Markdown notes and action items are written to a local folder — no cloud,
