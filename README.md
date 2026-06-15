@@ -14,7 +14,26 @@ See [`CLAUDE.md`](CLAUDE.md) for architecture, ADRs, and the phase backlog.
 - Xcode 15.3+ with command-line tools (`xcode-select --install`)
 - A Google account added to **System Settings → Internet Accounts** with Calendar enabled
 
-## Build & Install
+## Install
+
+### Homebrew (recommended)
+
+```bash
+brew install --cask dan-brodie/tap/scribe
+```
+
+The app launches cleanly — the [tap](https://github.com/dan-brodie/homebrew-tap)'s
+cask clears the download quarantine flag (Scribe is ad-hoc signed, not notarized).
+Upgrade with `brew upgrade --cask scribe`.
+
+### Download the DMG
+
+Grab the latest `.dmg` from [Releases](https://github.com/dan-brodie/scribe/releases),
+open it, and drag **Scribe** to **Applications**. Because the app isn't notarized,
+the first launch needs **right-click → Open** (or `xattr -dr com.apple.quarantine
+/Applications/Scribe.app`).
+
+## Build from source
 
 ```bash
 # 1. Fetch the on-device models (Gemma 4 E4B + Parakeet) — first run only, several GB
