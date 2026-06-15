@@ -6,19 +6,25 @@ import Foundation
 /// into the user-facing output folder:
 ///
 /// ```
-/// <output folder>/<YYYY-MM-DD> <title>/
+/// <output folder>/<YYYY-MM-DD HH-mm> <title>/
 ///   notes.md
 ///   transcript.txt
 ///   transcript.json
 ///   actions.json
 /// ```
 ///
-/// Every file is written atomically (temp + rename) so a crash — or a re-export
-/// triggered mid-write by a speaker reassignment — never leaves a half-written
-/// file. Re-exporting reuses the meeting's existing directory; a fresh export
-/// whose name collides with another meeting is suffixed ` (2)`, ` (3)`, ….
+/// The folder name includes the meeting's start time so multiple meetings on
+/// the same day stay distinct and sort chronologically. Every file is written
+/// atomically (temp + rename) so a crash — or a re-export triggered mid-write by
+/// a speaker reassignment — never leaves a half-written file. Re-exporting
+/// reuses the meeting's existing directory; a fresh export whose name still
+/// collides (e.g. two manual recordings in the same minute) is suffixed ` (2)`,
+/// ` (3)`, ….
 struct FileExporter {
     let outputRoot: URL
+    /// Timezone for the date/time in folder names. Defaults to the user's local
+    /// zone; tests pin it for deterministic names.
+    var timeZone: TimeZone = .current
 
     enum ExportError: Error, CustomStringConvertible {
         case noArtifacts(workingDir: URL)
@@ -73,9 +79,10 @@ struct FileExporter {
 
     // MARK: - Naming
 
-    /// `<YYYY-MM-DD> <sanitized title>` (or just the date when the title is empty).
+    /// `<YYYY-MM-DD HH-mm> <sanitized title>` (or just the date/time when the
+    /// title is empty).
     func directoryName(title: String, date: Date) -> String {
-        let datePart = Self.dateFormatter.string(from: date)
+        let datePart = dateFormatter.string(from: date)
         let safeTitle = Self.sanitize(title)
         return safeTitle.isEmpty ? datePart : "\(datePart) \(safeTitle)"
     }
@@ -99,14 +106,14 @@ struct FileExporter {
         return pieces.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    private static let dateFormatter: DateFormatter = {
+    private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
-        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd HH-mm"
         return formatter
-    }()
+    }
 
     // MARK: - Atomic write
 

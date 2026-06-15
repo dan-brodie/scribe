@@ -49,6 +49,9 @@ final class AppCoordinator {
     /// Calendars available to watch (populated once access is granted).
     private(set) var availableCalendars: [CalendarInfo] = []
     private(set) var calendarAuthorized = false
+    /// Set when a recording was blocked because microphone access is off; drives
+    /// the "Enable Microphone Access…" affordance in the menu.
+    private(set) var microphoneAccessDenied = false
 
     /// The next meeting that has not been opted out, for the menu bar row.
     var nextMeeting: UpcomingMeeting? {
@@ -355,18 +358,27 @@ final class AppCoordinator {
         guard !isRecording else { return }
         let now = Date()
         let eventID = "manual-\(Int(now.timeIntervalSince1970))"
-        let meetingID = try? await database.insert(
-            Meeting(
-                id: nil,
-                eventID: eventID,
-                title: "Manual Recording",
-                start: now,
-                end: now,
-                state: .scheduled,
-                exportPath: nil,
-                error: nil
+        let meetingID: Int64
+        do {
+            meetingID = try await database.insert(
+                Meeting(
+                    id: nil,
+                    eventID: eventID,
+                    title: "Manual Recording",
+                    start: now,
+                    end: now,
+                    state: .scheduled,
+                    exportPath: nil,
+                    error: nil
+                )
             )
-        )
+        } catch {
+            // Without a meeting row the capture can't be processed into notes, so
+            // surface the failure instead of recording into a void.
+            logger.error("failed to create manual meeting: \(error, privacy: .public)")
+            status = .error
+            return
+        }
         await startCapture(RecordingTarget(eventID: eventID, scheduledEnd: nil, meetingID: meetingID))
     }
 
@@ -376,6 +388,17 @@ final class AppCoordinator {
             notifyConsentRequired()
             return
         }
+        // macOS only shows the microphone prompt via requestAccess, and only
+        // once ever. Starting AVAudioEngine without authorization silently
+        // records zeroed buffers, so always confirm access before capturing.
+        guard await ensureMicrophoneAccess() else {
+            logger.info("recording blocked for \(target.eventID, privacy: .public): microphone access not granted")
+            microphoneAccessDenied = true
+            notifyMicrophoneRequired()
+            status = .error
+            return
+        }
+        microphoneAccessDenied = false
         do {
             try await captureService.startRecording(for: target)
             isRecording = true
@@ -410,6 +433,8 @@ final class AppCoordinator {
             } catch {
                 logger.error("state transition to recorded failed: \(error, privacy: .public)")
             }
+        } else {
+            logger.error("recording for \(target.eventID, privacy: .public) had no meeting row — not processed")
         }
         updateStatusForUpcoming()
         rescheduleAutoStart()
@@ -520,24 +545,39 @@ final class AppCoordinator {
 
     /// Summarize the diarized transcript (ADR-001), write `actions.json` and
     /// `notes.md`, persist action rows, and advance `diarized → summarized`.
-    /// On a JSON-degrade the meeting still advances with a recorded note.
+    ///
+    /// A completed recording always produces an exported note: if there's no
+    /// speech to summarize, or summarization fails (e.g. the model can't be
+    /// loaded), we still write a minimal note and export the transcript rather
+    /// than silently dropping the recording. This matters for manual "Record
+    /// Now" captures with no calendar event, which would otherwise vanish.
     private func summarizeMeeting(meetingID: Int64, eventID: String) async {
         processingMessage = "Summarizing…"
         let dir = Self.recordingsRoot().appendingPathComponent(eventID, isDirectory: true)
         let writer = ArtifactWriter(meetingDir: dir)
 
+        let meeting = try? await database.meeting(id: meetingID)
+        let title = meeting?.title ?? "Meeting"
+        let dateString = meeting.map {
+            DateFormatter.localizedString(from: $0.start, dateStyle: .medium, timeStyle: .short)
+        } ?? ""
+
         guard let transcript = writer.loadTranscriptText(), !transcript.isEmpty else {
             logger.error("no transcript text to summarize for \(eventID, privacy: .public)")
+            await finalizeWithoutSummary(
+                meetingID: meetingID,
+                eventID: eventID,
+                writer: writer,
+                title: title,
+                dateString: dateString,
+                note: "_No speech was detected in this recording._",
+                failureReason: nil
+            )
             return
         }
 
         do {
-            let meeting = try await database.meeting(id: meetingID)
             let attendees = try await database.attendees(forMeeting: meetingID).map(\.name)
-            let title = meeting?.title ?? "Meeting"
-            let dateString = meeting.map {
-                DateFormatter.localizedString(from: $0.start, dateStyle: .medium, timeStyle: .short)
-            } ?? ""
 
             // Build the summarizer with the currently-selected backend so a flag
             // change takes effect on the next meeting without a relaunch. Apple's
@@ -572,6 +612,51 @@ final class AppCoordinator {
             await exportMeeting(meetingID: meetingID, eventID: eventID)
         } catch {
             logger.error("summarization failed for \(eventID, privacy: .public): \(error, privacy: .public)")
+            // Don't lose the recording: export the transcript with a note that the
+            // summary couldn't be generated.
+            await finalizeWithoutSummary(
+                meetingID: meetingID,
+                eventID: eventID,
+                writer: writer,
+                title: title,
+                dateString: dateString,
+                note: "_A summary couldn't be generated for this meeting. The full transcript is included below._",
+                failureReason: String(describing: error)
+            )
+        }
+    }
+
+    /// Write a minimal note (no LLM summary), advance `diarized → summarized`,
+    /// and export — so a completed recording always lands a note in the output
+    /// folder even when summarization can't run.
+    private func finalizeWithoutSummary(
+        meetingID: Int64,
+        eventID: String,
+        writer: ArtifactWriter,
+        title: String,
+        dateString: String,
+        note: String,
+        failureReason: String?
+    ) async {
+        do {
+            var markdown = "# \(title)\n\n"
+            if !dateString.isEmpty { markdown += "\(dateString)\n\n" }
+            markdown += "\(note)\n"
+            try writer.writeNotes(markdown)
+            try writer.writeActions([])
+
+            if let failureReason {
+                try? await database.setError(meetingID: meetingID, message: "Summary unavailable: \(failureReason)")
+            }
+
+            // Only the diarized → summarized step is legal here; if a prior run
+            // already advanced the meeting, skip straight to export.
+            if (try? await database.meetingState(id: meetingID)) == .diarized {
+                try await stateMachine.transition(meeting: meetingID, to: .summarized)
+            }
+            await exportMeeting(meetingID: meetingID, eventID: eventID)
+        } catch {
+            logger.error("failed to finalize note for \(eventID, privacy: .public): \(error, privacy: .public)")
             try? await database.setError(meetingID: meetingID, message: String(describing: error))
         }
     }
@@ -687,6 +772,36 @@ final class AppCoordinator {
     /// Request microphone access; returns whether it was granted.
     func requestMicrophoneAccess() async -> Bool {
         await AVCaptureDevice.requestAccess(for: .audio)
+    }
+
+    /// Confirm microphone access before recording, prompting the first time.
+    /// Returns `false` when access is denied/restricted — the caller surfaces a
+    /// "turn it on in Settings" path, since macOS won't prompt again.
+    private func ensureMicrophoneAccess() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            return true
+        case .notDetermined:
+            return await AVCaptureDevice.requestAccess(for: .audio)
+        default:
+            return false
+        }
+    }
+
+    /// Open System Settings → Privacy & Security → Microphone.
+    func openMicrophoneSettings() {
+        guard let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        ) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func notifyMicrophoneRequired() {
+        let content = UNMutableNotificationContent()
+        content.title = "Microphone access needed"
+        content.body = "Scribe couldn't record — enable microphone access in System Settings › Privacy & Security › Microphone."
+        let request = UNNotificationRequest(identifier: "microphone-required", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
     }
 
     /// Trigger the system-audio TCC prompt by briefly creating and tearing down

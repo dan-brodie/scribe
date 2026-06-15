@@ -6,6 +6,12 @@ TEST_SCHEME = ScribeTests
 DERIVED     = build
 APP         = $(DERIVED)/Build/Products/Release/Scribe.app
 INSTALL_DIR = /Applications
+# Optional: re-sign the installed app with a stable local code-signing identity
+# so macOS TCC permissions (microphone, etc.) persist across local rebuilds.
+# Set to a code-signing identity name, e.g.:
+#   make install CODESIGN_IDENTITY="Scribe Dev"
+# Leave empty (default) for the ad-hoc signature used by CI and release builds.
+CODESIGN_IDENTITY ?=
 
 help:
 	@echo "Scribe — available targets:"
@@ -39,6 +45,12 @@ install: release
 	@echo "Installing Scribe.app to $(INSTALL_DIR)/ …"
 	rm -rf "$(INSTALL_DIR)/Scribe.app"
 	cp -R "$(APP)" "$(INSTALL_DIR)/Scribe.app"
+ifneq ($(CODESIGN_IDENTITY),)
+	@echo "Re-signing with identity '$(CODESIGN_IDENTITY)' for stable TCC permissions …"
+	# No --options runtime: the app isn't configured with the hardened-runtime
+	# microphone/audio entitlements, and enabling it would block mic capture.
+	codesign --force --deep --sign "$(CODESIGN_IDENTITY)" "$(INSTALL_DIR)/Scribe.app"
+endif
 	@echo "Installed. Launch from Applications or run: open $(INSTALL_DIR)/Scribe.app"
 
 dmg: release attributions

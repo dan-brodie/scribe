@@ -31,7 +31,9 @@ final class FileExporterTests: XCTestCase {
     }
 
     private func makeExporter() -> FileExporter {
-        FileExporter(outputRoot: root.appendingPathComponent("out", isDirectory: true))
+        // Pin the timezone so folder names (which include the start time) are
+        // deterministic regardless of where the test runs.
+        FileExporter(outputRoot: root.appendingPathComponent("out", isDirectory: true), timeZone: TimeZone(identifier: "UTC")!)
     }
 
     private func date(_ iso: String) -> Date {
@@ -44,7 +46,7 @@ final class FileExporterTests: XCTestCase {
     func testDirectoryNameUsesDatePrefixAndTitle() {
         let exporter = makeExporter()
         let name = exporter.directoryName(title: "Weekly Sync", date: date("2026-06-13T15:00:00Z"))
-        XCTAssertEqual(name, "2026-06-13 Weekly Sync")
+        XCTAssertEqual(name, "2026-06-13 15-00 Weekly Sync")
     }
 
     func testSanitizeStripsPathHostileCharacters() {
@@ -55,7 +57,7 @@ final class FileExporterTests: XCTestCase {
 
     func testEmptyTitleFallsBackToDateOnly() {
         let exporter = makeExporter()
-        XCTAssertEqual(exporter.directoryName(title: "///", date: date("2026-06-13T00:00:00Z")), "2026-06-13")
+        XCTAssertEqual(exporter.directoryName(title: "///", date: date("2026-06-13T00:00:00Z")), "2026-06-13 00-00")
     }
 
     // MARK: - Export
@@ -66,7 +68,7 @@ final class FileExporterTests: XCTestCase {
 
         let dir = try exporter.export(title: "Standup", date: date("2026-06-13T09:00:00Z"), workingDir: workingDir)
 
-        XCTAssertEqual(dir.lastPathComponent, "2026-06-13 Standup")
+        XCTAssertEqual(dir.lastPathComponent, "2026-06-13 09-00 Standup")
         XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("notes.md"), encoding: .utf8), "the notes")
         XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("transcript.txt"), encoding: .utf8), "the transcript")
         // transcript-lines.json surfaces to the user as transcript.json.
@@ -92,9 +94,9 @@ final class FileExporterTests: XCTestCase {
         let second = try exporter.export(title: "Sync", date: day, workingDir: workingDir)
         let third = try exporter.export(title: "Sync", date: day, workingDir: workingDir)
 
-        XCTAssertEqual(first.lastPathComponent, "2026-06-13 Sync")
-        XCTAssertEqual(second.lastPathComponent, "2026-06-13 Sync (2)")
-        XCTAssertEqual(third.lastPathComponent, "2026-06-13 Sync (3)")
+        XCTAssertEqual(first.lastPathComponent, "2026-06-13 10-00 Sync")
+        XCTAssertEqual(second.lastPathComponent, "2026-06-13 10-00 Sync (2)")
+        XCTAssertEqual(third.lastPathComponent, "2026-06-13 10-00 Sync (3)")
     }
 
     func testReExportReusesExistingDirectory() throws {
@@ -113,6 +115,6 @@ final class FileExporterTests: XCTestCase {
         // No suffixed sibling was created.
         let outRoot = root.appendingPathComponent("out", isDirectory: true)
         let entries = try FileManager.default.contentsOfDirectory(atPath: outRoot.path)
-        XCTAssertEqual(entries.sorted(), ["2026-06-13 Sync"])
+        XCTAssertEqual(entries.sorted(), ["2026-06-13 10-00 Sync"])
     }
 }
