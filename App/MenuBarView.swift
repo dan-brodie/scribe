@@ -50,12 +50,6 @@ struct MenuBarView: View {
 
             Divider()
 
-            if coordinator.demoRunning {
-                Button("Stop Demo") { coordinator.stopDemo() }
-            } else {
-                Button("Run Demo Pipeline") { coordinator.startDemo() }
-            }
-
             Toggle("Launch at Login", isOn: $launchAtLogin)
                 .onChange(of: launchAtLogin) { _, newValue in
                     LaunchAtLogin.set(enabled: newValue)

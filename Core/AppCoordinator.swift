@@ -8,7 +8,7 @@ import UserNotifications
 
 /// Thin orchestration layer the UI binds to. Owns the database and state
 /// machine and exposes the current menu-bar status. Real work lives in
-/// `Services/` (added in later phases); for Phase 0 this drives a demo loop.
+/// `Services/`.
 @MainActor
 @Observable
 final class AppCoordinator {
@@ -43,7 +43,6 @@ final class AppCoordinator {
     }
 
     private(set) var status: Status = .idle
-    private(set) var demoRunning = false
 
     /// Detected upcoming meetings, soonest first.
     private(set) var upcomingMeetings: [UpcomingMeeting] = []
@@ -160,7 +159,6 @@ final class AppCoordinator {
 
     private let timing = CaptureTiming.default
     private let logger = Log.make("AppCoordinator")
-    private var demoTask: Task<Void, Never>?
     private var calendarPollTask: Task<Void, Never>?
     private var countdownTask: Task<Void, Never>?
     private var calendarChangeObserver: NSObjectProtocol?
@@ -314,10 +312,10 @@ final class AppCoordinator {
         rescheduleAutoStart()
     }
 
-    /// Reflect the soonest non-opted-out meeting in the menu bar icon, unless a
-    /// demo run or active recording currently owns the status.
+    /// Reflect the soonest non-opted-out meeting in the menu bar icon, unless an
+    /// active recording currently owns the status.
     private func updateStatusForUpcoming() {
-        guard !demoRunning, !isRecording, status != .error else { return }
+        guard !isRecording, status != .error else { return }
         status = nextMeeting == nil ? .idle : .upcoming
     }
 
@@ -901,65 +899,5 @@ final class AppCoordinator {
 
     func watchedCalendarIDs() async -> Set<String>? {
         await calendarService.watchedCalendarIDs
-    }
-
-    // MARK: - Demo mode
-
-    /// Insert a fake meeting and walk it through every state on a timer, so the
-    /// pipeline and icon states can be exercised without real audio/calendar.
-    func startDemo() {
-        guard !demoRunning else { return }
-        demoRunning = true
-        demoTask = Task { [weak self] in
-            await self?.runDemo()
-            self?.demoRunning = false
-            self?.updateStatusForUpcoming()
-        }
-    }
-
-    func stopDemo() {
-        demoTask?.cancel()
-        demoTask = nil
-        demoRunning = false
-        updateStatusForUpcoming()
-    }
-
-    private func runDemo() async {
-        do {
-            status = .upcoming
-            try await Task.sleep(for: .seconds(1))
-
-            let now = Date()
-            let meeting = Meeting(
-                id: nil,
-                eventID: "demo-\(Int(now.timeIntervalSince1970))",
-                title: "Demo Meeting",
-                start: now,
-                end: now.addingTimeInterval(1800),
-                state: .recorded,
-                exportPath: nil,
-                error: nil
-            )
-            let id = try await database.insert(meeting)
-            logger.info("demo meeting inserted id=\(id, privacy: .public)")
-
-            status = .recording
-            try await Task.sleep(for: .seconds(1))
-            status = .processing
-
-            // Advance through transcribed → diarized → summarized → exported.
-            while !Task.isCancelled {
-                try await Task.sleep(for: .seconds(1))
-                guard let next = try await stateMachine.advance(meeting: id) else { break }
-                logger.info("demo meeting advanced to \(next.rawValue, privacy: .public)")
-            }
-
-            status = .idle
-        } catch is CancellationError {
-            status = .idle
-        } catch {
-            logger.error("demo run failed: \(error, privacy: .public)")
-            status = .error
-        }
     }
 }
