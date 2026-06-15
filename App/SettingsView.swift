@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import AppKit
 import SwiftUI
 
 /// Settings window. Phase 1 adds calendar access + a calendar picker; folders,
@@ -21,9 +22,21 @@ struct SettingsView: View {
                 } else {
                     Text("Scribe needs calendar access to detect your meetings.")
                         .foregroundStyle(.secondary)
-                    Button("Grant Calendar Access…") {
-                        Task { await coordinator.grantCalendarAccess() }
+                    HStack {
+                        Button("Grant Calendar Access…") {
+                            Task { await coordinator.grantCalendarAccess() }
+                        }
+                        Button("Open System Settings") {
+                            openCalendarPrivacySettings()
+                        }
+                        .buttonStyle(.link)
                     }
+                    // macOS only shows the access prompt once. If it was previously
+                    // dismissed or denied, the Grant button silently no-ops — use
+                    // System Settings to enable access manually.
+                    Text("If the button above does nothing, calendar access was previously denied — enable it in System Settings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -133,6 +146,13 @@ struct SettingsView: View {
                 persistSelection()
             }
         )
+    }
+
+    private func openCalendarPrivacySettings() {
+        guard let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
+        ) else { return }
+        NSWorkspace.shared.open(url)
     }
 
     private func persistSelection() {
