@@ -118,12 +118,9 @@ final class AppCoordinator {
         }
     }
 
-    /// Model-download progress (0...1) while fetching ASR weights, else nil.
-    private(set) var modelDownloadProgress: Double?
-    /// Last published whole-number percent, to coalesce the high-frequency
-    /// download callbacks (see `setModelDownloadProgress`).
-    private var lastModelProgressPercent = -1
     /// Short message describing current processing ("Transcribing…"), else nil.
+    /// Also surfaces a coarse "Downloading model…" during first-run downloads —
+    /// deliberately without a live percentage (see `noteModelDownloading`).
     private(set) var processingMessage: String?
 
     /// Whether voice enrollment is on ("Remember voices", off by default).
@@ -571,23 +568,17 @@ final class AppCoordinator {
         rescheduleAutoStart()
     }
 
-    /// Publish model-download progress, coalesced to whole-percent changes.
+    /// Reflect a first-run model download in the menu as a single static message.
     ///
-    /// The FluidAudio/MLX download handlers fire many times per second; writing
-    /// `modelDownloadProgress` on every callback re-renders the menu bar menu
-    /// fast enough to drive SwiftUI's menu diffing into runaway recursion and
-    /// crash (EXC_BAD_ACCESS in AttributeGraph). Only publishing on a percent
-    /// change keeps the menu update rate sane.
-    private func setModelDownloadProgress(_ fraction: Double) {
-        let percent = Int((fraction * 100).rounded(.down))
-        guard percent != lastModelProgressPercent else { return }
-        lastModelProgressPercent = percent
-        modelDownloadProgress = fraction < 1 ? fraction : nil
-    }
-
-    private func clearModelDownloadProgress() {
-        lastModelProgressPercent = -1
-        modelDownloadProgress = nil
+    /// We deliberately do NOT publish a live percentage: the FluidAudio/MLX
+    /// download handlers fire many times per second, and the value is non-
+    /// monotonic (per-file), so any value bound to the `MenuBarExtra` menu
+    /// re-renders it fast enough to drive SwiftUI's menu diffing into runaway
+    /// recursion and crash (EXC_BAD_ACCESS in AttributeGraph →
+    /// menuHostDidChangeMenuItems). A guarded one-time string change is safe.
+    private func noteModelDownloading() {
+        let message = "Downloading model…"
+        if processingMessage != message { processingMessage = message }
     }
 
     // MARK: - Processing pipeline
@@ -600,7 +591,6 @@ final class AppCoordinator {
         processingMessage = "Transcribing…"
         defer {
             processingMessage = nil
-            clearModelDownloadProgress()
             updateStatusForUpcoming()
         }
 
@@ -609,9 +599,8 @@ final class AppCoordinator {
                 eventID: eventID,
                 recordingsRoot: Self.recordingsRoot(),
                 modelProgress: { [weak self] fraction in
-                    Task { @MainActor in
-                        self?.setModelDownloadProgress(fraction)
-                    }
+                    guard fraction < 1 else { return }
+                    Task { @MainActor in self?.noteModelDownloading() }
                 }
             )
             try await stateMachine.transition(meeting: meetingID, to: .transcribed)
@@ -734,9 +723,8 @@ final class AppCoordinator {
             // on-device model needs no download (prepareModel is then a no-op).
             let summarizer = Summarizer(client: SummarizerClientFactory.makeClient(backend: summarizationBackend))
             try await summarizer.prepareModel(progress: { [weak self] fraction in
-                Task { @MainActor in
-                    self?.setModelDownloadProgress(fraction)
-                }
+                guard fraction < 1 else { return }
+                Task { @MainActor in self?.noteModelDownloading() }
             })
 
             let result = try await summarizer.summarize(
