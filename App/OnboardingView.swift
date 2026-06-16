@@ -14,7 +14,7 @@ struct OnboardingView: View {
     @State private var micGranted = false
     @State private var systemAudioGranted = false
 
-    private static let lastStep = 3
+    private static let lastStep = 4
 
     var body: some View {
         VStack(spacing: 0) {
@@ -50,7 +50,38 @@ struct OnboardingView: View {
         case 0: consentStep
         case 1: microphoneStep
         case 2: systemAudioStep
-        default: calendarStep
+        case 3: calendarStep
+        default: modelsStep
+        }
+    }
+
+    private var modelsStep: some View {
+        stepBody(
+            icon: "arrow.down.circle",
+            title: "Download Models",
+            detail: "Scribe transcribes and summarizes entirely on this Mac. Download the on-device models now (a few hundred MB) so your first meeting is ready immediately — or skip and they'll download on first use."
+        ) {
+            if coordinator.modelsReady {
+                Label("Models ready", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else if coordinator.isDownloadingModels {
+                VStack(alignment: .leading, spacing: 6) {
+                    ProgressView(value: coordinator.modelDownloadProgress ?? 0)
+                    Text("Downloading models…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Button("Download Models") {
+                    Task { await coordinator.downloadModels() }
+                }
+                if let error = coordinator.modelDownloadError {
+                    Text("Download failed: \(error)")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 

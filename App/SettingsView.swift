@@ -15,29 +15,19 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Calendar Access") {
-                if coordinator.calendarAuthorized {
-                    Label("Access granted", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                } else {
-                    Text("Scribe needs calendar access to detect your meetings.")
-                        .foregroundStyle(.secondary)
-                    HStack {
-                        Button("Grant Calendar Access…") {
-                            Task { await coordinator.grantCalendarAccess() }
-                        }
-                        Button("Open System Settings") {
-                            openCalendarPrivacySettings()
-                        }
-                        .buttonStyle(.link)
-                    }
-                    // macOS only shows the access prompt once. If it was previously
-                    // dismissed or denied, the Grant button silently no-ops — use
-                    // System Settings to enable access manually.
-                    Text("If the button above does nothing, calendar access was previously denied — enable it in System Settings.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            Section("Permissions") {
+                permissionRow("Microphone", status: coordinator.microphonePermission) {
+                    await coordinator.grantMicrophonePermission()
                 }
+                permissionRow("System Audio Recording", status: coordinator.systemAudioPermission) {
+                    await coordinator.grantSystemAudioPermission()
+                }
+                permissionRow("Calendar", status: coordinator.calendarPermission) {
+                    await coordinator.grantCalendarPermission()
+                }
+                Text("Scribe needs the microphone and system-audio for recording, and calendar to detect meetings.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Notes Folder") {
@@ -143,6 +133,31 @@ struct SettingsView: View {
             selected = watched ?? Set(coordinator.availableCalendars.map(\.id))
             loaded = true
         }
+        .task {
+            await coordinator.refreshPermissions()
+        }
+    }
+
+    @ViewBuilder
+    private func permissionRow(
+        _ title: String,
+        status: PermissionStatus,
+        grant: @escaping () async -> Void
+    ) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            switch status {
+            case .granted:
+                Label("Granted", systemImage: "checkmark.circle.fill")
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(.green)
+            case .denied:
+                Button("Open Settings…") { Task { await grant() } }
+            case .unknown:
+                Button("Grant") { Task { await grant() } }
+            }
+        }
     }
 
     private func binding(for id: String) -> Binding<Bool> {
@@ -161,13 +176,6 @@ struct SettingsView: View {
         case .ask: return "Scribe shows a “Take Notes / Ignore” notification when a meeting starts."
         case .auto: return "Scribe starts recording automatically when a meeting starts."
         }
-    }
-
-    private func openCalendarPrivacySettings() {
-        guard let url = URL(
-            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
-        ) else { return }
-        NSWorkspace.shared.open(url)
     }
 
     private func persistSelection() {

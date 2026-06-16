@@ -61,6 +61,25 @@ final class AppCoordinator {
     /// an "Enable Notifications…" action.
     private(set) var notificationsAuthorized = true
 
+    // MARK: Permission overview (Settings)
+
+    /// Permission statuses for the Settings overview, refreshed via
+    /// `refreshPermissions()`. System audio has no status API, so it's probed.
+    private(set) var microphonePermission: PermissionStatus = .unknown
+    private(set) var systemAudioPermission: PermissionStatus = .unknown
+    private(set) var calendarPermission: PermissionStatus = .unknown
+
+    // MARK: Model pre-download (onboarding)
+
+    /// First-run model-download progress (0...1) — bound ONLY in the onboarding
+    /// window, never the menu bar dropdown (which crashes on rapid updates).
+    private(set) var modelDownloadProgress: Double?
+    /// Whether a pre-download is in flight, all needed models are present, and the
+    /// last error if any — for the onboarding "Download models" step.
+    private(set) var isDownloadingModels = false
+    private(set) var modelsReady = false
+    private(set) var modelDownloadError: String?
+
     /// The next meeting that has not been opted out, for the menu bar row.
     var nextMeeting: UpcomingMeeting? {
         upcomingMeetings.first { !$0.optedOut }
@@ -903,6 +922,98 @@ final class AppCoordinator {
         let url = outputFolderStore.folder()
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    // MARK: - Permission overview
+
+    /// Refresh all permission statuses for the Settings overview. Mic/Calendar
+    /// read their TCC status directly; system audio has no status API so it's
+    /// probed (which also triggers its prompt the first time).
+    func refreshPermissions() async {
+        microphonePermission = Self.mapAVStatus(AVCaptureDevice.authorizationStatus(for: .audio))
+        if calendarService.isAuthorized {
+            calendarPermission = .granted
+        } else {
+            calendarPermission = calendarService.isDenied ? .denied : .unknown
+        }
+        calendarAuthorized = calendarPermission == .granted
+        systemAudioPermission = await requestSystemAudioAccess() ? .granted : .denied
+    }
+
+    private static func mapAVStatus(_ status: AVAuthorizationStatus) -> PermissionStatus {
+        switch status {
+        case .authorized: return .granted
+        case .denied, .restricted: return .denied
+        case .notDetermined: return .unknown
+        @unknown default: return .unknown
+        }
+    }
+
+    /// Settings "Grant" for microphone: prompt if undetermined, else open Settings.
+    func grantMicrophonePermission() async {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .notDetermined: _ = await AVCaptureDevice.requestAccess(for: .audio)
+        case .denied, .restricted: openMicrophoneSettings()
+        default: break
+        }
+        await refreshPermissions()
+    }
+
+    /// Settings "Grant" for system audio: probe (prompts first time), else Settings.
+    func grantSystemAudioPermission() async {
+        let granted = await requestSystemAudioAccess()
+        if !granted, systemAudioPermission == .denied { openSystemAudioSettings() }
+        await refreshPermissions()
+    }
+
+    /// Settings "Grant" for calendar: prompt if undetermined, else open Settings.
+    func grantCalendarPermission() async {
+        if calendarService.isDenied {
+            openCalendarSettings()
+        } else {
+            await grantCalendarAccess()
+        }
+        await refreshPermissions()
+    }
+
+    /// Open System Settings → Privacy & Security → Calendars.
+    func openCalendarSettings() {
+        guard let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
+        ) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    // MARK: - Model pre-download
+
+    /// Download every on-device model Scribe needs up front (ASR; plus the MLX
+    /// summary model when that backend is selected). Drives the onboarding
+    /// progress UI. Idempotent and safe to re-run.
+    func downloadModels() async {
+        guard !isDownloadingModels else { return }
+        isDownloadingModels = true
+        modelDownloadError = nil
+        modelDownloadProgress = 0
+        defer {
+            isDownloadingModels = false
+            modelDownloadProgress = nil
+        }
+        do {
+            try await asrEngine.prepareModels(progress: { [weak self] fraction in
+                Task { @MainActor in self?.modelDownloadProgress = fraction }
+            })
+            if summarizationBackend == .mlxGemma {
+                let summarizer = Summarizer(client: SummarizerClientFactory.makeClient(backend: .mlxGemma))
+                try await summarizer.prepareModel(progress: { [weak self] fraction in
+                    Task { @MainActor in self?.modelDownloadProgress = fraction }
+                })
+            }
+            modelsReady = true
+            logger.info("model pre-download complete")
+        } catch {
+            logger.error("model pre-download failed: \(error, privacy: .public)")
+            modelDownloadError = String(describing: error)
+        }
     }
 
     // MARK: - Onboarding & permissions
