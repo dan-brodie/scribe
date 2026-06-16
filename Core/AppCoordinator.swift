@@ -52,6 +52,14 @@ final class AppCoordinator {
     /// Set when a recording was blocked because microphone access is off; drives
     /// the "Enable Microphone Access…" affordance in the menu.
     private(set) var microphoneAccessDenied = false
+    /// Set when system-audio (process tap) capture is unavailable, so recordings
+    /// of online meetings would miss the far side; drives the "Enable Audio
+    /// Recording Access…" affordance. Best-effort — never blocks recording.
+    private(set) var systemAudioAccessDenied = false
+    /// Whether macOS notification permission is granted. When false, meeting
+    /// prompts and "Notes ready" banners are silently dropped, so the menu offers
+    /// an "Enable Notifications…" action.
+    private(set) var notificationsAuthorized = true
 
     /// The next meeting that has not been opted out, for the menu bar row.
     var nextMeeting: UpcomingMeeting? {
@@ -102,8 +110,13 @@ final class AppCoordinator {
 
     /// Whether a capture session is currently active.
     private(set) var isRecording = false
-    /// Whether meetings should auto-record at their start time.
-    var autoRecordEnabled = true
+    /// What to do when a watched meeting starts: nothing, ask, or auto-record.
+    var recordMode: RecordMode {
+        didSet {
+            UserDefaults.standard.set(recordMode.rawValue, forKey: Self.recordModeKey)
+            rescheduleAutoStart()
+        }
+    }
 
     /// Model-download progress (0...1) while fetching ASR weights, else nil.
     private(set) var modelDownloadProgress: Double?
@@ -139,6 +152,7 @@ final class AppCoordinator {
     private static let includeTranscriptKey = "includeTranscriptInEmail"
     private static let onboardedKey = "didCompleteOnboarding"
     private static let consentKey = "hasAcknowledgedRecordingConsent"
+    private static let recordModeKey = "recordMode"
 
     let database: Database
     let stateMachine: StateMachine
@@ -167,6 +181,12 @@ final class AppCoordinator {
     private var calendarChangeObserver: NSObjectProtocol?
     private var autoStartTask: Task<Void, Never>?
     private var captureConfigured = false
+    /// Becomes true once a system-audio tap is confirmed available, so we don't
+    /// re-probe on every recording.
+    private var systemAudioConfirmed = false
+    /// Meetings already prompted ("Ask" mode), so a calendar re-poll doesn't
+    /// re-prompt the same event.
+    private var promptedEventIDs: Set<String> = []
 
     /// Per-meeting diarization scratch kept for the Review popover: speaker
     /// embeddings (for enrollment) and a representative snippet location.
@@ -179,6 +199,8 @@ final class AppCoordinator {
         includeTranscriptInEmail = defaults.bool(forKey: Self.includeTranscriptKey)
         needsOnboarding = !defaults.bool(forKey: Self.onboardedKey)
         hasAcknowledgedConsent = defaults.bool(forKey: Self.consentKey)
+        recordMode = defaults.string(forKey: Self.recordModeKey)
+            .flatMap(RecordMode.init(rawValue:)) ?? .ask
 
         let db: Database
         do {
@@ -215,6 +237,9 @@ final class AppCoordinator {
     /// and calendar monitoring.
     func start() async {
         NotificationActionHandler.shared.register()
+        NotificationActionHandler.shared.onMeetingPrompt = { [weak self] eventID, decision in
+            Task { @MainActor in await self?.handleMeetingPrompt(eventID: eventID, decision: decision) }
+        }
         await requestNotificationPermission()
         await configureCaptureHandlers()
         await startCalendarMonitoringIfAuthorized()
@@ -248,15 +273,49 @@ final class AppCoordinator {
         )
     }
 
-    /// Ask for notification permission once, on first launch.
+    /// Ask for notification permission once, on first launch, and record the
+    /// resulting status so the menu can offer a fix if it's off.
     func requestNotificationPermission() async {
-        do {
-            let granted = try await UNUserNotificationCenter.current()
-                .requestAuthorization(options: [.alert, .sound])
-            logger.info("notification authorization granted=\(granted, privacy: .public)")
-        } catch {
-            logger.error("notification authorization failed: \(error, privacy: .public)")
+        let center = UNUserNotificationCenter.current()
+        switch await center.notificationSettings().authorizationStatus {
+        case .notDetermined:
+            do {
+                let granted = try await center.requestAuthorization(options: [.alert, .sound])
+                notificationsAuthorized = granted
+                logger.info("notification authorization granted=\(granted, privacy: .public)")
+            } catch {
+                notificationsAuthorized = false
+                logger.error("notification authorization failed: \(error, privacy: .public)")
+            }
+        case .authorized, .provisional, .ephemeral:
+            notificationsAuthorized = true
+        default:
+            notificationsAuthorized = false
         }
+    }
+
+    /// Menu action: get notifications turned on. Prompts when undetermined
+    /// (activating first so the system alert surfaces for this agent app), and
+    /// otherwise sends the user to System Settings since macOS won't re-prompt.
+    func enableNotifications() async {
+        let center = UNUserNotificationCenter.current()
+        switch await center.notificationSettings().authorizationStatus {
+        case .notDetermined:
+            NSApp.activate(ignoringOtherApps: true)
+            let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            notificationsAuthorized = granted
+            if !granted { openNotificationSettings() }
+        case .authorized, .provisional, .ephemeral:
+            notificationsAuthorized = true
+        default:
+            openNotificationSettings()
+        }
+    }
+
+    /// Open System Settings → Notifications.
+    func openNotificationSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     // MARK: - Calendar
@@ -324,10 +383,11 @@ final class AppCoordinator {
 
     // MARK: - Recording
 
-    /// Schedule auto-recording for the next meeting at `start − lead`.
+    /// Schedule the meeting-start action (record or prompt) for the next meeting
+    /// at `start − lead`.
     private func rescheduleAutoStart() {
         autoStartTask?.cancel()
-        guard autoRecordEnabled, !isRecording, let meeting = nextMeeting else {
+        guard recordMode != .off, !isRecording, let meeting = nextMeeting else {
             autoStartTask = nil
             return
         }
@@ -338,12 +398,29 @@ final class AppCoordinator {
                 try? await Task.sleep(for: .seconds(delay))
             }
             guard !Task.isCancelled else { return }
-            await self?.autoStart(meeting)
+            await self?.handleMeetingStart(meeting)
         }
     }
 
-    private func autoStart(_ meeting: UpcomingMeeting) async {
-        guard autoRecordEnabled, !isRecording, !meeting.optedOut else { return }
+    /// Fired at a watched meeting's start: record automatically, or post a
+    /// "Take Notes / Ignore" prompt, per the user's `recordMode`.
+    private func handleMeetingStart(_ meeting: UpcomingMeeting) async {
+        guard recordMode != .off, !isRecording, !meeting.optedOut else { return }
+        switch recordMode {
+        case .auto:
+            await startRecording(for: meeting)
+        case .ask:
+            // Prompt once per meeting; a 5-minute re-poll must not re-ask.
+            guard !promptedEventIDs.contains(meeting.externalID) else { return }
+            promptedEventIDs.insert(meeting.externalID)
+            promptToRecord(meeting)
+        case .off:
+            break
+        }
+    }
+
+    /// Begin recording a scheduled meeting (shared by auto mode and "Take Notes").
+    private func startRecording(for meeting: UpcomingMeeting) async {
         let meetingID = try? await database.meetingID(forEventID: meeting.externalID)
         let target = RecordingTarget(
             eventID: meeting.externalID,
@@ -351,6 +428,53 @@ final class AppCoordinator {
             meetingID: meetingID
         )
         await startCapture(target)
+    }
+
+    /// Post the "a meeting is starting" notification with Take Notes / Ignore
+    /// actions and the join link.
+    private func promptToRecord(_ meeting: UpcomingMeeting) {
+        let content = UNMutableNotificationContent()
+        content.title = meeting.title
+        var lines = ["Starting at \(meeting.start.formatted(date: .omitted, time: .shortened))"]
+        if let attendee = attendeeSummary(meeting) { lines.append(attendee) }
+        if let link = meeting.conferenceURL { lines.append(link) }
+        content.body = lines.joined(separator: "\n")
+        content.categoryIdentifier = NotificationActionHandler.meetingPromptCategoryID
+        content.userInfo = [
+            NotificationActionHandler.eventIDKey: meeting.externalID,
+            NotificationActionHandler.meetingURLKey: meeting.conferenceURL ?? "",
+        ]
+        let request = UNNotificationRequest(
+            identifier: "meeting-prompt-\(meeting.externalID)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private func attendeeSummary(_ meeting: UpcomingMeeting) -> String? {
+        let others = meeting.attendees.filter { !$0.isCurrentUser }.count
+        guard others > 0 else { return nil }
+        return others == 1 ? "1 other attendee" : "\(others) attendees"
+    }
+
+    /// Handle the user's response to a meeting prompt.
+    func handleMeetingPrompt(eventID: String, decision: MeetingPromptDecision) async {
+        switch decision {
+        case .takeNotes:
+            guard !isRecording else { return }
+            if let meeting = upcomingMeetings.first(where: { $0.externalID == eventID }) {
+                await startRecording(for: meeting)
+            } else {
+                let meetingID = try? await database.meetingID(forEventID: eventID)
+                await startCapture(RecordingTarget(eventID: eventID, scheduledEnd: nil, meetingID: meetingID))
+            }
+        case .ignore:
+            // Persisted opt-out so we don't re-prompt; the next meeting becomes
+            // the new soonest event and is scheduled in turn.
+            await calendarService.setOptOut(eventID, true)
+            await refreshCalendar()
+        }
     }
 
     /// Manual "Record now" — works without a calendar event.
@@ -399,6 +523,10 @@ final class AppCoordinator {
             return
         }
         microphoneAccessDenied = false
+        // System audio (the far side of an online meeting) is best-effort —
+        // in-person meetings are mic-only — so this never blocks. Probe once so
+        // macOS prompts the first time and we can offer a fix path if it's off.
+        await ensureSystemAudioAccess()
         do {
             try await captureService.startRecording(for: target)
             isRecording = true
@@ -792,6 +920,28 @@ final class AppCoordinator {
     func openMicrophoneSettings() {
         guard let url = URL(
             string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        ) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Confirm system-audio capture before recording. Never blocks: a failed
+    /// probe just means we record mic-only and surface a fix path. Probing also
+    /// triggers the macOS "Audio Recording" prompt the first time.
+    private func ensureSystemAudioAccess() async {
+        guard !systemAudioConfirmed else { return }
+        let granted = await requestSystemAudioAccess()
+        systemAudioConfirmed = granted
+        systemAudioAccessDenied = !granted
+        if !granted {
+            logger.info("system audio capture unavailable — recording mic-only")
+        }
+    }
+
+    /// Open System Settings → Privacy & Security → Audio Recording (the
+    /// process-tap permission that captures other participants' audio).
+    func openSystemAudioSettings() {
+        guard let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture"
         ) else { return }
         NSWorkspace.shared.open(url)
     }

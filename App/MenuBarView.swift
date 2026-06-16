@@ -25,6 +25,12 @@ struct MenuBarView: View {
                     .font(.caption)
             }
 
+            if !coordinator.notificationsAuthorized {
+                Button("Enable Notifications…") {
+                    Task { await coordinator.enableNotifications() }
+                }
+            }
+
             Divider()
 
             nextMeetingSection
@@ -32,6 +38,12 @@ struct MenuBarView: View {
             Divider()
 
             recordingSection
+
+            if coordinator.systemAudioAccessDenied {
+                Button("Enable Audio Recording Access…") {
+                    coordinator.openSystemAudioSettings()
+                }
+            }
 
             if let meetingID = coordinator.lastDiarizedMeetingID {
                 Button("Review Speakers…") {

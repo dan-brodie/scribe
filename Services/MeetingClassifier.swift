@@ -98,6 +98,26 @@ enum MeetingClassifier {
         }
     }
 
+    /// The first conferencing link in the event (URL field, then location, then
+    /// notes), or `nil`. Used to surface a join link in the meeting prompt.
+    static func conferenceURL(from event: EventInfo) -> String? {
+        let haystack = [event.url, event.location, event.notes]
+            .compactMap { $0 }
+            .joined(separator: "\n")
+        guard !haystack.isEmpty,
+              let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
+            return nil
+        }
+        let range = NSRange(haystack.startIndex..., in: haystack)
+        for match in detector.matches(in: haystack, range: range) {
+            guard let url = match.url?.absoluteString else { continue }
+            if conferencingPatterns.contains(where: { url.range(of: $0, options: .regularExpression) != nil }) {
+                return url
+            }
+        }
+        return nil
+    }
+
     /// Collapse recurring-series duplicates: keep the earliest instance per
     /// `externalID` (`calendarItemExternalIdentifier`). Result is sorted by
     /// start ascending.
