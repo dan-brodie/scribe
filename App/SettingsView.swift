@@ -57,8 +57,15 @@ struct SettingsView: View {
             }
 
             Section("Recording") {
-                Toggle("Record meetings automatically", isOn: $coordinator.autoRecordEnabled)
-                if !coordinator.hasAcknowledgedConsent {
+                Picker("When a meeting starts", selection: $coordinator.recordMode) {
+                    ForEach(RecordMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                Text(recordModeHint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if coordinator.recordMode != .off && !coordinator.hasAcknowledgedConsent {
                     Label(
                         "Recording is paused until you acknowledge the consent notice in onboarding.",
                         systemImage: "exclamationmark.triangle"
@@ -146,6 +153,14 @@ struct SettingsView: View {
                 persistSelection()
             }
         )
+    }
+
+    private var recordModeHint: String {
+        switch coordinator.recordMode {
+        case .off: return "Scribe won't record meetings automatically — use “Record Now” from the menu."
+        case .ask: return "Scribe shows a “Take Notes / Ignore” notification when a meeting starts."
+        case .auto: return "Scribe starts recording automatically when a meeting starts."
+        }
     }
 
     private func openCalendarPrivacySettings() {

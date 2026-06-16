@@ -66,6 +66,23 @@ final class CalendarServiceTests: XCTestCase {
         XCTAssertTrue(MeetingClassifier.isMeeting(e))
     }
 
+    // MARK: - Conference link extraction (meeting prompt)
+
+    func testConferenceURLExtractedFromNotes() {
+        let e = event(notes: "Agenda below.\nJoin: https://zoom.us/j/123456789\nThanks")
+        XCTAssertEqual(MeetingClassifier.conferenceURL(from: e), "https://zoom.us/j/123456789")
+    }
+
+    func testConferenceURLPrefersURLField() {
+        let e = event(notes: "https://zoom.us/j/111", url: "https://meet.google.com/abc-defg-hij")
+        XCTAssertEqual(MeetingClassifier.conferenceURL(from: e), "https://meet.google.com/abc-defg-hij")
+    }
+
+    func testConferenceURLNilWhenNoConferencingLink() {
+        let e = event(notes: "See https://example.com/agenda for details")
+        XCTAssertNil(MeetingClassifier.conferenceURL(from: e))
+    }
+
     func testEventWithAcceptedAttendeeIsAMeeting() {
         let e = event(participants: [
             attendee(.accepted, isCurrentUser: true),

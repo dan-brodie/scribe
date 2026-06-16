@@ -18,6 +18,8 @@ struct UpcomingMeeting: Identifiable, Sendable, Equatable {
     var end: Date
     var attendees: [ParticipantInfo]
     var optedOut: Bool
+    /// First conferencing link found on the event, surfaced in the meeting prompt.
+    var conferenceURL: String?
 
     var id: String { externalID }
 }
@@ -115,7 +117,8 @@ actor CalendarService {
                 start: info.start,
                 end: info.end,
                 attendees: info.participants,
-                optedOut: optOutStore.isOptedOut(info.externalID)
+                optedOut: optOutStore.isOptedOut(info.externalID),
+                conferenceURL: MeetingClassifier.conferenceURL(from: info)
             )
             result.append(meeting)
 
