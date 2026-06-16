@@ -54,6 +54,13 @@ endif
 	@echo "Installed. Launch from Applications or run: open $(INSTALL_DIR)/Scribe.app"
 
 dmg: release attributions
+ifneq ($(CODESIGN_IDENTITY),)
+	@echo "Signing release with identity '$(CODESIGN_IDENTITY)' for a stable TCC identity …"
+	# A stable, identity-based designated requirement (vs an ad-hoc cdhash) lets
+	# macOS keep TCC grants across app updates. No --options runtime: the app has
+	# no hardened-runtime audio entitlements and enabling it would block capture.
+	codesign --force --deep --sign "$(CODESIGN_IDENTITY)" "$(APP)"
+endif
 	bash Scripts/make-dmg.sh "$(APP)"
 
 attributions:
