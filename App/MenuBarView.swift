@@ -17,10 +17,7 @@ struct MenuBarView: View {
             Label("Scribe — \(coordinator.status.label)", systemImage: coordinator.status.symbolName)
                 .labelStyle(.titleAndIcon)
 
-            if let progress = coordinator.modelDownloadProgress {
-                Text("Downloading model… \(Int(progress * 100))%")
-                    .font(.caption)
-            } else if let message = coordinator.processingMessage {
+            if let message = coordinator.processingMessage {
                 Text(message)
                     .font(.caption)
             }
