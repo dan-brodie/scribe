@@ -120,6 +120,9 @@ final class AppCoordinator {
 
     /// Model-download progress (0...1) while fetching ASR weights, else nil.
     private(set) var modelDownloadProgress: Double?
+    /// Last published whole-number percent, to coalesce the high-frequency
+    /// download callbacks (see `setModelDownloadProgress`).
+    private var lastModelProgressPercent = -1
     /// Short message describing current processing ("Transcribing…"), else nil.
     private(set) var processingMessage: String?
 
@@ -568,6 +571,25 @@ final class AppCoordinator {
         rescheduleAutoStart()
     }
 
+    /// Publish model-download progress, coalesced to whole-percent changes.
+    ///
+    /// The FluidAudio/MLX download handlers fire many times per second; writing
+    /// `modelDownloadProgress` on every callback re-renders the menu bar menu
+    /// fast enough to drive SwiftUI's menu diffing into runaway recursion and
+    /// crash (EXC_BAD_ACCESS in AttributeGraph). Only publishing on a percent
+    /// change keeps the menu update rate sane.
+    private func setModelDownloadProgress(_ fraction: Double) {
+        let percent = Int((fraction * 100).rounded(.down))
+        guard percent != lastModelProgressPercent else { return }
+        lastModelProgressPercent = percent
+        modelDownloadProgress = fraction < 1 ? fraction : nil
+    }
+
+    private func clearModelDownloadProgress() {
+        lastModelProgressPercent = -1
+        modelDownloadProgress = nil
+    }
+
     // MARK: - Processing pipeline
 
     /// Run transcription for a freshly-recorded meeting and advance
@@ -578,7 +600,7 @@ final class AppCoordinator {
         processingMessage = "Transcribing…"
         defer {
             processingMessage = nil
-            modelDownloadProgress = nil
+            clearModelDownloadProgress()
             updateStatusForUpcoming()
         }
 
@@ -588,7 +610,7 @@ final class AppCoordinator {
                 recordingsRoot: Self.recordingsRoot(),
                 modelProgress: { [weak self] fraction in
                     Task { @MainActor in
-                        self?.modelDownloadProgress = fraction < 1 ? fraction : nil
+                        self?.setModelDownloadProgress(fraction)
                     }
                 }
             )
@@ -713,7 +735,7 @@ final class AppCoordinator {
             let summarizer = Summarizer(client: SummarizerClientFactory.makeClient(backend: summarizationBackend))
             try await summarizer.prepareModel(progress: { [weak self] fraction in
                 Task { @MainActor in
-                    self?.modelDownloadProgress = fraction < 1 ? fraction : nil
+                    self?.setModelDownloadProgress(fraction)
                 }
             })
 
