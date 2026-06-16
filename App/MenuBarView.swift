@@ -14,13 +14,12 @@ struct MenuBarView: View {
 
     var body: some View {
         Group {
-            Label("Scribe — \(coordinator.status.label)", systemImage: coordinator.status.symbolName)
+            // Static header only: live status/progress lives in the menu bar
+            // icon, not the dropdown. Mutating dropdown items while it's open
+            // crashes MenuBarExtra(.menu) (SwiftUI menuHostDidChangeMenuItems
+            // recursion), so the dropdown must not reflect processing state.
+            Label("Scribe", systemImage: "waveform.circle")
                 .labelStyle(.titleAndIcon)
-
-            if let message = coordinator.processingMessage {
-                Text(message)
-                    .font(.caption)
-            }
 
             if !coordinator.notificationsAuthorized {
                 Button("Enable Notifications…") {

@@ -51,6 +51,13 @@ actor CalendarService {
         authorizationStatus == .fullAccess
     }
 
+    /// True when access was explicitly denied/restricted (vs. not-yet-asked), so
+    /// the UI can route to System Settings rather than re-prompting.
+    nonisolated var isDenied: Bool {
+        let status = authorizationStatus
+        return status == .denied || status == .restricted
+    }
+
     func requestAccess() async -> Bool {
         do {
             let granted = try await store.requestFullAccessToEvents()
