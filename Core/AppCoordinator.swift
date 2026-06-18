@@ -206,6 +206,8 @@ final class AppCoordinator {
     /// Meetings already prompted ("Ask" mode), so a calendar re-poll doesn't
     /// re-prompt the same event.
     private var promptedEventIDs: Set<String> = []
+    /// Presents the persistent floating "meeting starting" prompt.
+    private let meetingPrompt = MeetingPromptPresenter()
 
     /// Per-meeting diarization scratch kept for the Review popover: speaker
     /// embeddings (for enrollment) and a representative snippet location.
@@ -256,9 +258,6 @@ final class AppCoordinator {
     /// and calendar monitoring.
     func start() async {
         NotificationActionHandler.shared.register()
-        NotificationActionHandler.shared.onMeetingPrompt = { [weak self] eventID, decision in
-            Task { @MainActor in await self?.handleMeetingPrompt(eventID: eventID, decision: decision) }
-        }
         await requestNotificationPermission()
         await configureCaptureHandlers()
         await startCalendarMonitoringIfAuthorized()
@@ -449,51 +448,34 @@ final class AppCoordinator {
         await startCapture(target)
     }
 
-    /// Post the "a meeting is starting" notification with Take Notes / Ignore
-    /// actions and the join link.
+    /// Show the persistent floating prompt for a starting meeting. It stays
+    /// on-screen (top-center, above other apps) until the user chooses.
     private func promptToRecord(_ meeting: UpcomingMeeting) {
-        let content = UNMutableNotificationContent()
-        content.title = meeting.title
-        var lines = ["Starting at \(meeting.start.formatted(date: .omitted, time: .shortened))"]
-        if let attendee = attendeeSummary(meeting) { lines.append(attendee) }
-        if let link = meeting.conferenceURL { lines.append(link) }
-        content.body = lines.joined(separator: "\n")
-        content.categoryIdentifier = NotificationActionHandler.meetingPromptCategoryID
-        content.userInfo = [
-            NotificationActionHandler.eventIDKey: meeting.externalID,
-            NotificationActionHandler.meetingURLKey: meeting.conferenceURL ?? "",
-        ]
-        let request = UNNotificationRequest(
-            identifier: "meeting-prompt-\(meeting.externalID)",
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request)
-    }
-
-    private func attendeeSummary(_ meeting: UpcomingMeeting) -> String? {
-        let others = meeting.attendees.filter { !$0.isCurrentUser }.count
-        guard others > 0 else { return nil }
-        return others == 1 ? "1 other attendee" : "\(others) attendees"
-    }
-
-    /// Handle the user's response to a meeting prompt.
-    func handleMeetingPrompt(eventID: String, decision: MeetingPromptDecision) async {
-        switch decision {
-        case .takeNotes:
-            guard !isRecording else { return }
-            if let meeting = upcomingMeetings.first(where: { $0.externalID == eventID }) {
-                await startRecording(for: meeting)
-            } else {
-                let meetingID = try? await database.meetingID(forEventID: eventID)
-                await startCapture(RecordingTarget(eventID: eventID, scheduledEnd: nil, meetingID: meetingID))
+        meetingPrompt.present(
+            meeting: meeting,
+            onJoin: { [weak self] in
+                Task { @MainActor in await self?.joinAndTranscribe(meeting) }
+            },
+            onIgnore: { [weak self] in
+                Task { @MainActor in await self?.ignoreMeeting(meeting.externalID) }
             }
-        case .ignore:
-            // Persisted opt-out so we don't re-prompt; the next meeting becomes
-            // the new soonest event and is scheduled in turn.
-            await calendarService.setOptOut(eventID, true)
-            await refreshCalendar()
+        )
+    }
+
+    /// "Join and transcribe": open the meeting's join link and start recording.
+    func joinAndTranscribe(_ meeting: UpcomingMeeting) async {
+        if let link = meeting.conferenceURL, let url = URL(string: link) {
+            NSWorkspace.shared.open(url)
         }
+        guard !isRecording else { return }
+        await startRecording(for: meeting)
+    }
+
+    /// "Ignore": opt this meeting out so it isn't re-prompted; the next event
+    /// becomes the soonest and is scheduled in turn.
+    func ignoreMeeting(_ eventID: String) async {
+        await calendarService.setOptOut(eventID, true)
+        await refreshCalendar()
     }
 
     /// Manual "Record now" — works without a calendar event.

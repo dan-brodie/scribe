@@ -11,13 +11,8 @@ import UserNotifications
 ///
 /// The export notification carries its folder path in `userInfo`, so tapping the
 /// banner — or its "Reveal in Finder" action — reveals the notes without any
-/// coordinator round-trip.
-/// The user's response to a "meeting is starting" prompt.
-enum MeetingPromptDecision: Sendable {
-    case takeNotes
-    case ignore
-}
-
+/// coordinator round-trip. (The "meeting starting" prompt is a floating panel,
+/// not a notification — see `MeetingPromptPresenter`.)
 final class NotificationActionHandler: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationActionHandler()
 
@@ -25,16 +20,7 @@ final class NotificationActionHandler: NSObject, UNUserNotificationCenterDelegat
     static let revealActionID = "REVEAL_IN_FINDER"
     static let pathKey = "exportPath"
 
-    static let meetingPromptCategoryID = "MEETING_PROMPT"
-    static let takeNotesActionID = "TAKE_NOTES"
-    static let ignoreActionID = "IGNORE_MEETING"
-    static let eventIDKey = "eventID"
-    static let meetingURLKey = "meetingURL"
-
-    /// Invoked when the user responds to a meeting prompt (set by AppCoordinator).
-    var onMeetingPrompt: (@Sendable (String, MeetingPromptDecision) -> Void)?
-
-    /// Register notification categories + actions and install ourselves as the
+    /// Register the export category + reveal action and install ourselves as the
     /// notification-center delegate. Idempotent.
     func register() {
         let reveal = UNNotificationAction(
@@ -42,32 +28,14 @@ final class NotificationActionHandler: NSObject, UNUserNotificationCenterDelegat
             title: "Reveal in Finder",
             options: [.foreground]
         )
-        let exportCategory = UNNotificationCategory(
+        let category = UNNotificationCategory(
             identifier: Self.exportCategoryID,
             actions: [reveal],
             intentIdentifiers: [],
             options: []
         )
-
-        let takeNotes = UNNotificationAction(
-            identifier: Self.takeNotesActionID,
-            title: "Take Notes",
-            options: [.foreground]
-        )
-        let ignore = UNNotificationAction(
-            identifier: Self.ignoreActionID,
-            title: "Ignore",
-            options: []
-        )
-        let meetingPromptCategory = UNNotificationCategory(
-            identifier: Self.meetingPromptCategoryID,
-            actions: [takeNotes, ignore],
-            intentIdentifiers: [],
-            options: []
-        )
-
         let center = UNUserNotificationCenter.current()
-        center.setNotificationCategories([exportCategory, meetingPromptCategory])
+        center.setNotificationCategories([category])
         center.delegate = self
     }
 
@@ -77,43 +45,15 @@ final class NotificationActionHandler: NSObject, UNUserNotificationCenterDelegat
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let action = response.actionIdentifier
-        let userInfo = response.notification.request.content.userInfo
-        let category = response.notification.request.content.categoryIdentifier
-
-        if category == Self.meetingPromptCategoryID {
-            handleMeetingPrompt(action: action, userInfo: userInfo)
-            completionHandler()
-            return
-        }
-
         let revealRequested = action == Self.revealActionID || action == UNNotificationDefaultActionIdentifier
         if revealRequested,
-           let path = userInfo[Self.pathKey] as? String {
+           let path = response.notification.request.content.userInfo[Self.pathKey] as? String {
             let url = URL(fileURLWithPath: path)
             Task { @MainActor in
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             }
         }
         completionHandler()
-    }
-
-    /// Route a meeting-prompt response: explicit actions go to the coordinator;
-    /// tapping the banner body opens the meeting link (join the call).
-    private func handleMeetingPrompt(action: String, userInfo: [AnyHashable: Any]) {
-        guard let eventID = userInfo[Self.eventIDKey] as? String else { return }
-        switch action {
-        case Self.takeNotesActionID:
-            onMeetingPrompt?(eventID, .takeNotes)
-        case Self.ignoreActionID:
-            onMeetingPrompt?(eventID, .ignore)
-        case UNNotificationDefaultActionIdentifier:
-            if let link = userInfo[Self.meetingURLKey] as? String,
-               !link.isEmpty, let url = URL(string: link) {
-                Task { @MainActor in NSWorkspace.shared.open(url) }
-            }
-        default:
-            break
-        }
     }
 
     /// Show export banners even while Scribe is the foreground app.
