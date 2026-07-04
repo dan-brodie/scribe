@@ -78,17 +78,18 @@ actor CaptureService {
         return false
     }
 
-    /// Directory for a given event's recordings.
+    /// Directory for a given event's recordings. The event ID is inviter-
+    /// controlled, so it is sanitized — never used verbatim as a path component.
     func recordingDirectory(for eventID: String) -> URL {
-        recordingsRoot.appendingPathComponent(eventID, isDirectory: true)
+        RecordingPaths.directory(root: recordingsRoot, eventID: eventID)
     }
 
     // MARK: - Lifecycle
 
     func startRecording(for target: RecordingTarget) async throws {
         guard case .idle = state else {
-            logger.error("startRecording ignored: already recording")
-            return
+            logger.error("startRecording rejected: already recording")
+            throw CaptureError.alreadyRecording
         }
 
         let dir = recordingDirectory(for: target.eventID)

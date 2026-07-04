@@ -7,6 +7,7 @@ import Foundation
 enum CaptureError: Error, CustomStringConvertible {
     case unsupportedFormat
     case writerNotOpen
+    case alreadyRecording
     case tapCreationFailed(OSStatus)
     case aggregateDeviceCreationFailed(OSStatus)
     case engineStartFailed(String)
@@ -15,6 +16,7 @@ enum CaptureError: Error, CustomStringConvertible {
         switch self {
         case .unsupportedFormat: return "could not create 16 kHz mono Float32 format"
         case .writerNotOpen: return "audio writer is not open"
+        case .alreadyRecording: return "a recording is already in progress"
         case let .tapCreationFailed(status): return "process tap creation failed (\(status))"
         case let .aggregateDeviceCreationFailed(status): return "aggregate device creation failed (\(status))"
         case let .engineStartFailed(message): return "audio engine failed to start: \(message)"

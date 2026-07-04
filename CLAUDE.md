@@ -95,7 +95,7 @@ make build           # xcodebuild Scribe scheme
 make test            # run ScribeTests
 make lint            # swiftlint --strict
 make format-fix      # swift-format in-place
-make download-models # fetch Gemma 4 E4B + Parakeet to ~/.cache/scribe-models/
+make download-models # explains in-app model downloads (models download inside Scribe)
 make check-licenses  # fail on non-allowlisted dependency licenses
 make clean           # remove .build/ and DerivedData/
 ```

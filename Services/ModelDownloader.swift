@@ -44,7 +44,22 @@ actor ModelDownloader {
             }
             cached = models
             return models
+        } catch ModelError.checksumMismatch {
+            // Integrity failure: wipe, re-download once, and re-validate
+            // against the SAME manifest. A second mismatch is surfaced as an
+            // error — never silently re-trusted with a fresh manifest.
+            logger.error("model checksum mismatch; wiping and re-downloading once")
+            try? FileManager.default.removeItem(at: directory)
+            let models = try await downloadAndLoad(progress: progress)
+            guard validate(directory) else {
+                logger.error("model checksum mismatch persisted after re-download")
+                throw ModelError.checksumMismatch
+            }
+            cached = models
+            return models
         } catch {
+            // Download/load failure (not an integrity mismatch): wipe and retry
+            // once; the fresh download re-establishes the trusted manifest.
             logger.error("model load failed (\(error, privacy: .public)); wiping and retrying once")
             try? FileManager.default.removeItem(at: directory)
             let models = try await downloadAndLoad(progress: progress)

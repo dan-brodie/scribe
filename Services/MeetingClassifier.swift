@@ -98,8 +98,29 @@ enum MeetingClassifier {
         }
     }
 
+    /// Hosts trusted for the one-click "Join and transcribe" action. Matched by
+    /// exact host or subdomain — never by substring, so a link like
+    /// `https://evil.com/zoom.us/j/x` can't qualify.
+    static let trustedConferenceHosts = [
+        "zoom.us",
+        "meet.google.com",
+        "teams.microsoft.com",
+        "teams.live.com",
+        "webex.com",
+    ]
+
+    /// Whether `url` is safe to open from the meeting prompt: `https` and a
+    /// trusted conferencing host (or subdomain). Event notes/location are
+    /// controlled by the meeting's inviter, so this is a security boundary —
+    /// the loose regex classification above must never decide what gets opened.
+    static func isTrustedConferenceURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https", let host = url.host?.lowercased() else { return false }
+        return trustedConferenceHosts.contains { host == $0 || host.hasSuffix(".\($0)") }
+    }
+
     /// The first conferencing link in the event (URL field, then location, then
-    /// notes), or `nil`. Used to surface a join link in the meeting prompt.
+    /// notes), or `nil`. Used to surface a join link in the meeting prompt —
+    /// only https links on trusted conferencing hosts qualify.
     static func conferenceURL(from event: EventInfo) -> String? {
         let haystack = [event.url, event.location, event.notes]
             .compactMap { $0 }
@@ -110,9 +131,9 @@ enum MeetingClassifier {
         }
         let range = NSRange(haystack.startIndex..., in: haystack)
         for match in detector.matches(in: haystack, range: range) {
-            guard let url = match.url?.absoluteString else { continue }
-            if conferencingPatterns.contains(where: { url.range(of: $0, options: .regularExpression) != nil }) {
-                return url
+            guard let url = match.url else { continue }
+            if isTrustedConferenceURL(url) {
+                return url.absoluteString
             }
         }
         return nil
@@ -131,12 +152,13 @@ enum MeetingClassifier {
         return result
     }
 
-    /// Extract an email address from a `mailto:` URL string, or `nil`.
+    /// Extract an email address from a `mailto:` URL string, or `nil`. Any
+    /// header query (`?subject=…`) is dropped — only the address part is kept.
     static func parseMailto(_ raw: String?) -> String? {
         guard let raw else { return nil }
         let prefix = "mailto:"
         guard raw.lowercased().hasPrefix(prefix) else { return nil }
-        let email = String(raw.dropFirst(prefix.count))
+        let email = String(raw.dropFirst(prefix.count)).components(separatedBy: "?")[0]
         return email.isEmpty ? nil : email
     }
 }

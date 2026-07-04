@@ -42,9 +42,14 @@ enum EmbeddingCodec {
 
     static func decode(_ data: Data) -> [Float] {
         let count = data.count / MemoryLayout<Float>.size
-        return data.withUnsafeBytes { raw in
-            Array(UnsafeBufferPointer(start: raw.bindMemory(to: Float.self).baseAddress, count: count))
+        guard count > 0 else { return [] }
+        // Copy rather than rebind: Data's storage isn't guaranteed to be
+        // Float-aligned, and an unaligned bind is undefined behavior.
+        var result = [Float](repeating: 0, count: count)
+        result.withUnsafeMutableBufferPointer { dest in
+            _ = data.copyBytes(to: dest)
         }
+        return result
     }
 }
 

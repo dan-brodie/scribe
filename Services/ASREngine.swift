@@ -54,7 +54,7 @@ actor ASREngine {
         try await prepareModels(progress: modelProgress)
         guard let manager else { throw EngineError.notPrepared }
 
-        let dir = recordingsRoot.appendingPathComponent(eventID, isDirectory: true)
+        let dir = RecordingPaths.directory(root: recordingsRoot, eventID: eventID)
         let mic = try await transcribeChannel(
             url: dir.appendingPathComponent("mic.caf"),
             channel: .mic,

@@ -162,6 +162,13 @@ final class AppCoordinator {
         didSet { UserDefaults.standard.set(includeTranscriptInEmail, forKey: Self.includeTranscriptKey) }
     }
 
+    /// Whether to delete the raw audio (`mic.caf`/`system.caf`) once a meeting's
+    /// notes have been exported. Off by default; opting in bounds how long raw
+    /// recordings of people's voices sit on disk.
+    var deleteAudioAfterExport: Bool {
+        didSet { UserDefaults.standard.set(deleteAudioAfterExport, forKey: Self.deleteAudioKey) }
+    }
+
     /// Whether the first-launch onboarding wizard still needs to run.
     private(set) var needsOnboarding: Bool
     /// Whether the user has acknowledged the recording-consent notice. Recording
@@ -169,6 +176,7 @@ final class AppCoordinator {
     private(set) var hasAcknowledgedConsent: Bool
 
     private static let includeTranscriptKey = "includeTranscriptInEmail"
+    private static let deleteAudioKey = "deleteAudioAfterExport"
     private static let onboardedKey = "didCompleteOnboarding"
     private static let consentKey = "hasAcknowledgedRecordingConsent"
     private static let recordModeKey = "recordMode"
@@ -211,13 +219,20 @@ final class AppCoordinator {
 
     /// Per-meeting diarization scratch kept for the Review popover: speaker
     /// embeddings (for enrollment) and a representative snippet location.
+    /// Bounded to the most recent meetings so a long-running session doesn't
+    /// accumulate embeddings indefinitely.
     private var meetingEmbeddings: [Int64: [String: [Float]]] = [:]
     private var meetingSnippets: [Int64: [String: (channel: TranscriptChannel, start: TimeInterval)]] = [:]
+    private var reviewScratchOrder: [Int64] = []
+    private let reviewScratchLimit = 8
     private var snippetPlayer: AVAudioPlayer?
+    /// The temp file backing the currently-playing snippet, removed on replace.
+    private var lastSnippetURL: URL?
 
     init() {
         let defaults = UserDefaults.standard
         includeTranscriptInEmail = defaults.bool(forKey: Self.includeTranscriptKey)
+        deleteAudioAfterExport = defaults.bool(forKey: Self.deleteAudioKey)
         needsOnboarding = !defaults.bool(forKey: Self.onboardedKey)
         hasAcknowledgedConsent = defaults.bool(forKey: Self.consentKey)
         recordMode = defaults.string(forKey: Self.recordModeKey)
@@ -254,14 +269,74 @@ final class AppCoordinator {
         return base.appendingPathComponent("recordings", isDirectory: true)
     }
 
+    /// Per-meeting working directory. Event IDs are inviter-controlled, so the
+    /// path component is always sanitized via `RecordingPaths` — every consumer
+    /// of the recordings root must go through this helper.
+    private static func recordingDir(for eventID: String) -> URL {
+        RecordingPaths.directory(root: recordingsRoot(), eventID: eventID)
+    }
+
     /// One-shot launch setup invoked from the UI: permissions, capture handlers,
-    /// and calendar monitoring.
+    /// calendar monitoring, and resuming any meetings a previous run left
+    /// mid-pipeline.
     func start() async {
         NotificationActionHandler.shared.register()
         await requestNotificationPermission()
         await configureCaptureHandlers()
         await startCalendarMonitoringIfAuthorized()
         startCountdownTicker()
+        await resumeIncompleteMeetings()
+    }
+
+    /// Pick up meetings stranded in a non-terminal state by a crash, quit, or
+    /// earlier processing failure, and run their remaining stages sequentially
+    /// (one processing job at a time).
+    private func resumeIncompleteMeetings() async {
+        let stuck = (try? await database.incompleteMeetings()) ?? []
+        guard !stuck.isEmpty else { return }
+        logger.info("resuming \(stuck.count, privacy: .public) incomplete meeting(s)")
+        for meeting in stuck {
+            guard let meetingID = meeting.id, !isRecording else { continue }
+            await resumeMeeting(meeting, meetingID: meetingID)
+        }
+    }
+
+    /// Run the pipeline from the stage matching the meeting's persisted state.
+    /// Each stage chains into the next on success, so one call completes the
+    /// meeting or records an error.
+    private func resumeMeeting(_ meeting: Meeting, meetingID: Int64) async {
+        status = .processing
+        defer {
+            processingMessage = nil
+            updateStatusForUpcoming()
+        }
+        switch meeting.state {
+        case .recorded:
+            await processMeeting(meetingID: meetingID, eventID: meeting.eventID)
+        case .transcribed:
+            guard let transcript = loadTranscript(eventID: meeting.eventID) else {
+                logger.error("resume: segments.json missing for \(meeting.eventID, privacy: .public)")
+                try? await database.setError(
+                    meetingID: meetingID,
+                    message: "Resume failed: transcription output is missing or unreadable."
+                )
+                return
+            }
+            await diarizeAndName(meetingID: meetingID, eventID: meeting.eventID, transcript: transcript)
+        case .diarized:
+            await summarizeMeeting(meetingID: meetingID, eventID: meeting.eventID)
+        case .summarized:
+            await exportMeeting(meetingID: meetingID, eventID: meeting.eventID)
+        case .scheduled, .exported:
+            break
+        }
+    }
+
+    /// Reload a meeting's transcript from its persisted `segments.json`.
+    private func loadTranscript(eventID: String) -> Transcript? {
+        let url = Self.recordingDir(for: eventID).appendingPathComponent("segments.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(Transcript.self, from: data)
     }
 
     /// Tick `now` at each minute boundary so the menu-bar countdown (7c) updates
@@ -428,9 +503,10 @@ final class AppCoordinator {
         case .auto:
             await startRecording(for: meeting)
         case .ask:
-            // Prompt once per meeting; a 5-minute re-poll must not re-ask.
-            guard !promptedEventIDs.contains(meeting.externalID) else { return }
-            promptedEventIDs.insert(meeting.externalID)
+            // Prompt once per occurrence; a 5-minute re-poll must not re-ask,
+            // but the next instance of a recurring series must prompt again.
+            guard !promptedEventIDs.contains(meeting.occurrenceID) else { return }
+            promptedEventIDs.insert(meeting.occurrenceID)
             promptToRecord(meeting)
         case .off:
             break
@@ -438,10 +514,25 @@ final class AppCoordinator {
     }
 
     /// Begin recording a scheduled meeting (shared by auto mode and "Take Notes").
+    /// Keyed on the occurrence, not the series, so recurring meetings never
+    /// collide with a prior instance's pipeline state or files.
     private func startRecording(for meeting: UpcomingMeeting) async {
-        let meetingID = try? await database.meetingID(forEventID: meeting.externalID)
+        let occurrenceID = meeting.occurrenceID
+        var meetingID = try? await database.meetingID(forEventID: occurrenceID)
+        if meetingID == nil {
+            // The occurrence hasn't been persisted yet (e.g. recording started
+            // before the first calendar poll) — create its row now so the
+            // capture can be processed into notes.
+            meetingID = try? await database.upsertScheduledMeeting(
+                externalID: occurrenceID,
+                title: meeting.title,
+                start: meeting.start,
+                end: meeting.end,
+                attendees: meeting.attendees
+            )
+        }
         let target = RecordingTarget(
-            eventID: meeting.externalID,
+            eventID: occurrenceID,
             scheduledEnd: meeting.end,
             meetingID: meetingID
         )
@@ -533,6 +624,12 @@ final class AppCoordinator {
             isRecording = true
             status = .recording
             logger.info("capture started for \(target.eventID, privacy: .public)")
+        } catch CaptureError.alreadyRecording {
+            // A session is already live (e.g. racing auto-start and manual
+            // start) — re-sync our flags to it rather than flagging an error.
+            logger.error("duplicate capture start for \(target.eventID, privacy: .public); keeping existing session")
+            isRecording = true
+            status = .recording
         } catch {
             logger.error("failed to start capture: \(error, privacy: .public)")
             status = .error
@@ -613,6 +710,7 @@ final class AppCoordinator {
         } catch {
             logger.error("transcription failed for \(eventID, privacy: .public): \(error, privacy: .public)")
             try? await database.setError(meetingID: meetingID, message: String(describing: error))
+            noteStageFailed(eventID: eventID, stage: "transcribing")
         }
     }
 
@@ -623,7 +721,7 @@ final class AppCoordinator {
     /// `transcribed → diarized`.
     private func diarizeAndName(meetingID: Int64, eventID: String, transcript: Transcript) async {
         processingMessage = "Identifying speakers…"
-        let dir = Self.recordingsRoot().appendingPathComponent(eventID, isDirectory: true)
+        let dir = Self.recordingDir(for: eventID)
         let systemURL = dir.appendingPathComponent("system.caf")
 
         do {
@@ -678,6 +776,7 @@ final class AppCoordinator {
         } catch {
             logger.error("diarization failed for \(eventID, privacy: .public): \(error, privacy: .public)")
             try? await database.setError(meetingID: meetingID, message: String(describing: error))
+            noteStageFailed(eventID: eventID, stage: "identifying speakers")
         }
     }
 
@@ -693,7 +792,7 @@ final class AppCoordinator {
     /// Now" captures with no calendar event, which would otherwise vanish.
     private func summarizeMeeting(meetingID: Int64, eventID: String) async {
         processingMessage = "Summarizing…"
-        let dir = Self.recordingsRoot().appendingPathComponent(eventID, isDirectory: true)
+        let dir = Self.recordingDir(for: eventID)
         let writer = ArtifactWriter(meetingDir: dir)
 
         let meeting = try? await database.meeting(id: meetingID)
@@ -797,6 +896,7 @@ final class AppCoordinator {
         } catch {
             logger.error("failed to finalize note for \(eventID, privacy: .public): \(error, privacy: .public)")
             try? await database.setError(meetingID: meetingID, message: String(describing: error))
+            noteStageFailed(eventID: eventID, stage: "writing notes")
         }
     }
 
@@ -814,11 +914,15 @@ final class AppCoordinator {
             try await stateMachine.transition(meeting: meetingID, to: .exported)
             lastExportedMeetingID = meetingID
             lastExportURL = dir
+            if deleteAudioAfterExport {
+                removeRawAudio(eventID: eventID)
+            }
             notifyExported(title: meeting.title, dir: dir)
             logger.info("exported \(eventID, privacy: .public) → \(dir.lastPathComponent, privacy: .private)")
         } catch {
             logger.error("export failed for \(eventID, privacy: .public): \(error, privacy: .public)")
             try? await database.setError(meetingID: meetingID, message: String(describing: error))
+            noteStageFailed(eventID: eventID, stage: "exporting")
         }
     }
 
@@ -826,7 +930,7 @@ final class AppCoordinator {
     /// existing export directory on a re-export (e.g. after a reassignment).
     @discardableResult
     private func performExport(meeting: Meeting, eventID: String) throws -> URL {
-        let workingDir = Self.recordingsRoot().appendingPathComponent(eventID, isDirectory: true)
+        let workingDir = Self.recordingDir(for: eventID)
         let root = outputFolderStore.folder()
         let accessing = root.startAccessingSecurityScopedResource()
         defer { if accessing { root.stopAccessingSecurityScopedResource() } }
@@ -840,6 +944,17 @@ final class AppCoordinator {
         )
     }
 
+    /// Delete a meeting's raw audio once its notes are safely exported
+    /// (retention opt-in). Transcripts and notes are kept; the Review popover's
+    /// voice snippets become unavailable for this meeting.
+    private func removeRawAudio(eventID: String) {
+        let dir = Self.recordingDir(for: eventID)
+        for name in ["mic.caf", "system.caf"] {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+        }
+        logger.info("raw audio removed after export for \(eventID, privacy: .public)")
+    }
+
     private func notifyExported(title: String, dir: URL) {
         let content = UNMutableNotificationContent()
         content.title = "Notes ready"
@@ -847,6 +962,19 @@ final class AppCoordinator {
         content.categoryIdentifier = NotificationActionHandler.exportCategoryID
         content.userInfo = [NotificationActionHandler.pathKey: dir.path]
         let request = UNNotificationRequest(identifier: "export-\(dir.lastPathComponent)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    /// Surface a pipeline-stage failure: error icon + a notification, so a
+    /// failed meeting never disappears silently. The state was not advanced,
+    /// so the launch-time resume scan retries it.
+    private func noteStageFailed(eventID: String, stage: String) {
+        status = .error
+        let content = UNMutableNotificationContent()
+        content.title = "Notes failed"
+        content.body = "Scribe couldn't finish \(stage) for this meeting. "
+            + "The recording is kept and will be retried the next time Scribe starts."
+        let request = UNNotificationRequest(identifier: "failed-\(eventID)", content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
 
@@ -913,6 +1041,13 @@ final class AppCoordinator {
     /// probed (which also triggers its prompt the first time).
     func refreshPermissions() async {
         microphonePermission = Self.mapAVStatus(AVCaptureDevice.authorizationStatus(for: .audio))
+        if microphonePermission == .granted, microphoneAccessDenied {
+            // The mic-denied error is resolved — stop showing the error icon.
+            microphoneAccessDenied = false
+            if status == .error, !isRecording {
+                status = nextMeeting == nil ? .idle : .upcoming
+            }
+        }
         if calendarService.isAuthorized {
             calendarPermission = .granted
         } else {
@@ -1121,6 +1256,13 @@ final class AppCoordinator {
         transcript: Transcript
     ) {
         meetingEmbeddings[meetingID] = embeddings
+        reviewScratchOrder.removeAll { $0 == meetingID }
+        reviewScratchOrder.append(meetingID)
+        while reviewScratchOrder.count > reviewScratchLimit {
+            let evicted = reviewScratchOrder.removeFirst()
+            meetingEmbeddings.removeValue(forKey: evicted)
+            meetingSnippets.removeValue(forKey: evicted)
+        }
         var snippets: [String: (channel: TranscriptChannel, start: TimeInterval)] = [:]
         snippets[Self.localUserLabel] = (.mic, transcript.segments.first { $0.channel == .mic }?.start ?? 0)
         for segment in diarized.sorted(by: { $0.start < $1.start }) where snippets[segment.speakerLabel] == nil {
@@ -1214,7 +1356,7 @@ final class AppCoordinator {
             }
 
             if let meeting = try await database.meeting(id: meetingID) {
-                let dir = Self.recordingsRoot().appendingPathComponent(meeting.eventID, isDirectory: true)
+                let dir = Self.recordingDir(for: meeting.eventID)
                 try ArtifactWriter(meetingDir: dir).rewriteAfterReassignment(displayName: resolver)
                 // If the meeting was already exported, refresh the user-facing
                 // copy so the corrected names appear there too.
@@ -1244,9 +1386,14 @@ final class AppCoordinator {
               let meeting = try? await database.meeting(id: meetingID)
         else { return }
 
-        let dir = Self.recordingsRoot().appendingPathComponent(meeting.eventID, isDirectory: true)
+        let dir = Self.recordingDir(for: meeting.eventID)
         let file = dir.appendingPathComponent(snippet.channel == .mic ? "mic.caf" : "system.caf")
         guard let snippetURL = AudioSnippet.extract(from: file, start: snippet.start) else { return }
+        // Snippets are throwaway temp files — clean up the previous one.
+        if let previous = lastSnippetURL {
+            try? FileManager.default.removeItem(at: previous)
+        }
+        lastSnippetURL = snippetURL
         snippetPlayer = try? AVAudioPlayer(contentsOf: snippetURL)
         snippetPlayer?.play()
     }

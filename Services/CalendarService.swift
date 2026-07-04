@@ -22,6 +22,18 @@ struct UpcomingMeeting: Identifiable, Sendable, Equatable {
     var conferenceURL: String?
 
     var id: String { externalID }
+
+    /// The pipeline key for this specific occurrence. `externalID`
+    /// (`calendarItemExternalIdentifier`) is shared by every instance of a
+    /// recurring series, so meetings, recordings, and exports are keyed on
+    /// (externalID, start) — otherwise a series' second occurrence would
+    /// collide with the first's terminal state and overwrite its files.
+    /// Opt-out and the calendar UI stay keyed on `externalID` (per-series).
+    var occurrenceID: String { Self.occurrenceID(externalID: externalID, start: start) }
+
+    static func occurrenceID(externalID: String, start: Date) -> String {
+        "\(externalID)#\(Int(start.timeIntervalSince1970))"
+    }
 }
 
 /// Owns the `EKEventStore`, fetches upcoming events, classifies them, and
@@ -130,8 +142,9 @@ actor CalendarService {
             result.append(meeting)
 
             do {
+                // Persist per occurrence, not per series (see `occurrenceID`).
                 try await database.upsertScheduledMeeting(
-                    externalID: info.externalID,
+                    externalID: meeting.occurrenceID,
                     title: title,
                     start: info.start,
                     end: info.end,

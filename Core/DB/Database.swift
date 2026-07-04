@@ -6,6 +6,12 @@ import GRDB
 /// Owns the GRDB `DatabaseQueue` and exposes typed accessors used by the rest
 /// of the app. Migrations run at init time.
 final class Database: Sendable {
+    enum StoreError: Error, CustomStringConvertible {
+        case insertReturnedNoID
+
+        var description: String { "insert did not produce a row ID" }
+    }
+
     let dbQueue: DatabaseQueue
     private let logger = Log.make("Database")
 
@@ -65,7 +71,8 @@ final class Database: Sendable {
         try await dbQueue.write { db in
             var copy = meeting
             try copy.insert(db)
-            return copy.id ?? 0
+            guard let id = copy.id else { throw StoreError.insertReturnedNoID }
+            return id
         }
     }
 
@@ -106,7 +113,8 @@ final class Database: Sendable {
                     error: nil
                 )
                 try meeting.insert(db)
-                meetingID = meeting.id ?? 0
+                guard let id = meeting.id else { throw StoreError.insertReturnedNoID }
+                meetingID = id
             }
 
             try Attendee
@@ -131,6 +139,19 @@ final class Database: Sendable {
     func meeting(id: Int64) async throws -> Meeting? {
         try await dbQueue.read { db in
             try Meeting.fetchOne(db, id: id)
+        }
+    }
+
+    /// Meetings a crash or quit left mid-pipeline (recorded → summarized), in
+    /// start order — the launch-time resume scan (CLAUDE.md: relaunch resumes
+    /// incomplete stages).
+    func incompleteMeetings() async throws -> [Meeting] {
+        let states = [MeetingState.recorded, .transcribed, .diarized, .summarized].map(\.rawValue)
+        return try await dbQueue.read { db in
+            try Meeting
+                .filter(states.contains(Column("state")))
+                .order(Column("start"))
+                .fetchAll(db)
         }
     }
 
