@@ -15,7 +15,7 @@ jobs:
     name: License allowlist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Check dependency licenses
         run: make check-licenses
 
@@ -23,7 +23,7 @@ jobs:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v3
@@ -39,7 +39,7 @@ jobs:
     # blocking once `make lint` is green locally.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: SwiftLint (strict)
         run: |
           docker run --rm -v "$PWD":/repo -w /repo \
@@ -49,7 +49,7 @@ jobs:
     name: Build & test
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
