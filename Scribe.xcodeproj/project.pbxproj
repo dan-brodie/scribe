@@ -417,7 +417,7 @@
 			repositoryURL = "https://github.com/groue/GRDB.swift.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 7.11.0;
+				minimumVersion = 7.11.1;
 			};
 		};
 		1A0000000000000000000090 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
