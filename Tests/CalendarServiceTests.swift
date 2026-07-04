@@ -83,6 +83,30 @@ final class CalendarServiceTests: XCTestCase {
         XCTAssertNil(MeetingClassifier.conferenceURL(from: e))
     }
 
+    // The opened URL is a security boundary: event notes/location are
+    // inviter-controlled, so lookalikes and non-https links must never
+    // qualify for the one-click "Join and transcribe" action.
+
+    func testConferenceURLRejectsTrustedHostInPathOfOtherDomain() {
+        let e = event(notes: "Join: https://evil.example.com/zoom.us/j/123456789")
+        XCTAssertNil(MeetingClassifier.conferenceURL(from: e))
+    }
+
+    func testConferenceURLRejectsLookalikeHostSuffix() {
+        let e = event(notes: "Join: https://zoom.us.evil.example.com/j/123456789")
+        XCTAssertNil(MeetingClassifier.conferenceURL(from: e))
+    }
+
+    func testConferenceURLRejectsNonHTTPS() {
+        let e = event(notes: "Join: http://zoom.us/j/123456789")
+        XCTAssertNil(MeetingClassifier.conferenceURL(from: e))
+    }
+
+    func testConferenceURLAcceptsTrustedSubdomain() {
+        let e = event(notes: "Join: https://us02web.zoom.us/j/123456789")
+        XCTAssertEqual(MeetingClassifier.conferenceURL(from: e), "https://us02web.zoom.us/j/123456789")
+    }
+
     func testEventWithAcceptedAttendeeIsAMeeting() {
         let e = event(participants: [
             attendee(.accepted, isCurrentUser: true),
@@ -147,6 +171,21 @@ final class CalendarServiceTests: XCTestCase {
         XCTAssertNil(MeetingClassifier.parseMailto(nil))
         XCTAssertNil(MeetingClassifier.parseMailto("https://example.com"))
         XCTAssertNil(MeetingClassifier.parseMailto("mailto:"))
+    }
+
+    func testParseMailtoStripsHeaderQuery() {
+        XCTAssertEqual(MeetingClassifier.parseMailto("mailto:a@b.com?subject=hi&cc=c@d.com"), "a@b.com")
+        XCTAssertNil(MeetingClassifier.parseMailto("mailto:?subject=hi"))
+    }
+
+    // MARK: - Occurrence keying (recurring series)
+
+    func testOccurrenceIDsDifferAcrossOccurrencesOfOneSeries() {
+        let day: TimeInterval = 86_400
+        let first = UpcomingMeeting.occurrenceID(externalID: "series-1", start: start)
+        let second = UpcomingMeeting.occurrenceID(externalID: "series-1", start: start.addingTimeInterval(day))
+        XCTAssertNotEqual(first, second, "each occurrence must get its own pipeline key")
+        XCTAssertEqual(first, UpcomingMeeting.occurrenceID(externalID: "series-1", start: start), "stable")
     }
 
     // MARK: - Opt-out persistence

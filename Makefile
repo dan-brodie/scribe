@@ -24,7 +24,7 @@ help:
 	@echo "  make lint            swiftlint --strict"
 	@echo "  make format          swift-format lint (check only)"
 	@echo "  make format-fix      swift-format in-place"
-	@echo "  make download-models fetch Gemma 4 E4B + Parakeet to ~/.cache/scribe-models/"
+	@echo "  make download-models explain in-app model downloads (they happen inside Scribe)"
 	@echo "  make download-fixtures fetch ASR test audio into Tests/Fixtures/"
 	@echo "  make check-licenses  fail on non-allowlisted dependency licenses"
 	@echo "  make security-scan   secret scan (gitleaks) over the working tree"

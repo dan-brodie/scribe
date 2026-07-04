@@ -72,6 +72,16 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Privacy") {
+                Toggle("Delete audio after notes are exported", isOn: $coordinator.deleteAudioAfterExport)
+                Text(
+                    "Removes the raw microphone and system recordings once a meeting's notes are safely exported. "
+                        + "Transcripts and notes are kept; speaker-review voice snippets become unavailable."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
             Section("Summarization") {
                 Picker("Engine", selection: $coordinator.summarizationBackend) {
                     ForEach(SummarizationBackend.allCases) { backend in

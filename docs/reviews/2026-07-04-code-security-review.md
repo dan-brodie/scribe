@@ -1,5 +1,10 @@
 # Code, Security & Testing Review — 2026-07-04
 
+> **Status update:** all High findings (H1–H3), M1–M3, M5, and L1–L6 were fixed in **v0.2.0**
+> (see `CHANGELOG.md`). M4 (Developer ID signing/notarization) remains open — it requires
+> signing credentials. The CI lint gap is addressed with a non-blocking SwiftLint job pending
+> cleanup of pre-existing strict-mode violations.
+
 Scope: full repository at `main` (v0.1.9, commit `8c45470`). Focus: correctness/functionality
 bugs, security posture, best practices, and test coverage.
 

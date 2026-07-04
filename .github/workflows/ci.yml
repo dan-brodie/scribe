@@ -31,6 +31,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
 
+  lint:
+    name: SwiftLint
+    runs-on: ubuntu-latest
+    # Non-blocking for now: the codebase predates this gate and still carries a
+    # handful of strict-mode violations (long string literals). Flip to
+    # blocking once `make lint` is green locally.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: SwiftLint (strict)
+        run: |
+          docker run --rm -v "$PWD":/repo -w /repo \
+            ghcr.io/realm/swiftlint:0.57.1 swiftlint --strict
+
   test:
     name: Build & test
     runs-on: macos-15

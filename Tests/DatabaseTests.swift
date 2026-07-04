@@ -83,6 +83,72 @@ final class DatabaseTests: XCTestCase {
         XCTAssertEqual(remaining, 0)
     }
 
+    func testRecurringOccurrencesGetSeparateMeetingRows() async throws {
+        // A recurring series shares one calendarItemExternalIdentifier; keying
+        // rows on the occurrence ID keeps each instance's pipeline independent
+        // (the H1 fix — previously the second occurrence collided with the
+        // first's terminal `exported` state and was never processed).
+        let db = try Database.inMemory()
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let day: TimeInterval = 86_400
+
+        let first = try await db.upsertScheduledMeeting(
+            externalID: UpcomingMeeting.occurrenceID(externalID: "series-1", start: start),
+            title: "Standup",
+            start: start,
+            end: start.addingTimeInterval(1800),
+            attendees: []
+        )
+        let second = try await db.upsertScheduledMeeting(
+            externalID: UpcomingMeeting.occurrenceID(externalID: "series-1", start: start.addingTimeInterval(day)),
+            title: "Standup",
+            start: start.addingTimeInterval(day),
+            end: start.addingTimeInterval(day + 1800),
+            attendees: []
+        )
+
+        XCTAssertNotEqual(first, second, "each occurrence gets its own row")
+
+        // Completing the first occurrence must not block the second.
+        let sm = StateMachine(database: db)
+        for state in [MeetingState.recorded, .transcribed, .diarized, .summarized, .exported] {
+            try await sm.transition(meeting: first, to: state)
+        }
+        try await sm.transition(meeting: second, to: .recorded)
+        let secondState = try await db.meetingState(id: second)
+        XCTAssertEqual(secondState, .recorded)
+    }
+
+    func testIncompleteMeetingsReturnsOnlyMidPipelineStates() async throws {
+        let db = try Database.inMemory()
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+        func makeMeeting(_ eventID: String, _ state: MeetingState, offset: TimeInterval) -> Meeting {
+            Meeting(
+                id: nil,
+                eventID: eventID,
+                title: "M",
+                start: base.addingTimeInterval(offset),
+                end: base.addingTimeInterval(offset + 60),
+                state: state,
+                exportPath: nil,
+                error: nil
+            )
+        }
+
+        try await db.insert(makeMeeting("evt-scheduled", .scheduled, offset: 0))
+        try await db.insert(makeMeeting("evt-recorded", .recorded, offset: 300))
+        try await db.insert(makeMeeting("evt-diarized", .diarized, offset: 100))
+        try await db.insert(makeMeeting("evt-exported", .exported, offset: 200))
+
+        let incomplete = try await db.incompleteMeetings()
+        XCTAssertEqual(
+            incomplete.map(\.eventID),
+            ["evt-diarized", "evt-recorded"],
+            "mid-pipeline meetings only, ordered by start"
+        )
+    }
+
     func testStateColumnDefaultsToRecorded() async throws {
         let db = try Database.inMemory()
         let state = try await db.dbQueue.write { dbConn -> String in
